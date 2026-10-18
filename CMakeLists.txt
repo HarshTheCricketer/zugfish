@@ -1,14 +1,15 @@
-cmake_minimum_required(VERSION 3.20)
-project(zugfish LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.21)
+project(zugfish VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(BUILD_GUI "Build Qt6 GUI application" ON)
+option(BUILD_CLI "Build CLI tool" ON)
+
 find_package(CURL REQUIRED)
 find_package(nlohmann_json REQUIRED)
-find_package(OpenGL REQUIRED)
-find_package(glfw3 REQUIRED)
 
 # Core Library
 add_library(zugfish_core STATIC
@@ -20,30 +21,20 @@ add_library(zugfish_core STATIC
 )
 target_include_directories(zugfish_core PUBLIC core third_party)
 target_link_libraries(zugfish_core PUBLIC CURL::libcurl nlohmann_json::nlohmann_json)
-target_compile_options(zugfish_core PRIVATE -Wall -Wextra)
+target_compile_options(zugfish_core PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra>)
 
 # CLI Executable
-add_executable(zugfish-cli cli/main.cpp)
-target_link_libraries(zugfish-cli PRIVATE zugfish_core)
+if(BUILD_CLI)
+    add_executable(zugfish-cli cli/main.cpp)
+    target_link_libraries(zugfish-cli PRIVATE zugfish_core)
+endif()
 
-# Dear ImGui Library
-add_library(imgui STATIC
-    third_party/imgui/imgui.cpp
-    third_party/imgui/imgui_draw.cpp
-    third_party/imgui/imgui_tables.cpp
-    third_party/imgui/imgui_widgets.cpp
-    third_party/imgui/backends/imgui_impl_glfw.cpp
-    third_party/imgui/backends/imgui_impl_opengl3.cpp
-)
-target_include_directories(imgui PUBLIC
-    third_party/imgui
-    third_party/imgui/backends
-)
-target_link_libraries(imgui PUBLIC
-    glfw
-    OpenGL::GL
-)
+# Qt GUI Executable
+if(BUILD_GUI)
+    add_subdirectory(gui)
+endif()
 
-# GUI Executable
-add_executable(zugfish-gui gui/main.cpp)
-target_link_libraries(zugfish-gui PRIVATE zugfish_core imgui)
+include(GNUInstallDirs)
+if(BUILD_CLI)
+    install(TARGETS zugfish-cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()

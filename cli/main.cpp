@@ -10,7 +10,21 @@ int main(int argc, char** argv) {
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "--chesscom" && i + 1 < argc) {
+        if (arg == "-h" || arg == "--help") {
+            std::cout << "Zugfish CLI - Chess Game Reviewer & Stockfish Analysis\n"
+                      << "Usage: zugfish-cli [options] [game.pgn] [depth]\n\n"
+                      << "Options:\n"
+                      << "  -h, --help                 Show this help message\n"
+                      << "  --depth <N>                Engine analysis depth (default: 12)\n"
+                      << "  --chesscom <username>      Import recent games from Chess.com API\n"
+                      << "  --lichess <username>       Import recent games from Lichess.org API\n\n"
+                      << "Examples:\n"
+                      << "  zugfish-cli game.pgn\n"
+                      << "  zugfish-cli game.pgn 14\n"
+                      << "  zugfish-cli --chesscom hikaru --depth 12\n"
+                      << "  zugfish-cli --lichess magnuscarlsen\n";
+            return 0;
+        } else if (arg == "--chesscom" && i + 1 < argc) {
             chesscom_user = argv[++i];
         } else if (arg == "--lichess" && i + 1 < argc) {
             lichess_user = argv[++i];

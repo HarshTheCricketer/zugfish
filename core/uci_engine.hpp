@@ -8,6 +8,15 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <sys/types.h>
+#endif
+
 namespace zugfish {
 
 struct Score {
@@ -38,7 +47,11 @@ struct EngineEvaluation {
 
 class UciEngine {
 public:
+#ifdef _WIN32
+    explicit UciEngine(const std::string& engine_path = "stockfish.exe");
+#else
     explicit UciEngine(const std::string& engine_path = "/usr/sbin/stockfish");
+#endif
     ~UciEngine();
 
     // Non-copyable
@@ -68,10 +81,16 @@ private:
     EngineEvaluation parse_search_output();
 
     std::string engine_path_;
+#ifdef _WIN32
+    HANDLE process_handle_ = NULL;
+    HANDLE write_handle_ = NULL;
+    HANDLE read_handle_ = NULL;
+#else
     pid_t pid_ = -1;
     int write_fd_ = -1;
     int read_fd_ = -1;
     FILE* read_file_ = nullptr;
+#endif
 };
 
 } // namespace zugfish

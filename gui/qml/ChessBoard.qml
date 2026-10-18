@@ -11,7 +11,7 @@ Item {
 
     readonly property real sq: size / 8
     readonly property bool flipped: App.flipped
-    readonly property var palette: Theme.boardThemes[App.boardTheme] || Theme.boardThemes[0]
+    readonly property var boardPalette: Theme.boardThemes[App.boardTheme] || Theme.boardThemes[0]
     readonly property var cur: App.current
 
     // board index (a1 = 0 ... h8 = 63) -> pixel centre
@@ -49,13 +49,13 @@ Item {
             y: r * root.sq
             width: root.sq
             height: root.sq
-            color: (c + r) % 2 === 0 ? root.palette.light : root.palette.dark
+            color: (c + r) % 2 === 0 ? root.boardPalette.light : root.boardPalette.dark
 
             Text {   // rank number on the left edge
                 visible: parent.c === 0
                 x: 4; y: 3
                 text: root.flipped ? parent.r + 1 : 8 - parent.r
-                color: (parent.c + parent.r) % 2 === 0 ? root.palette.dark : root.palette.light
+                color: (parent.c + parent.r) % 2 === 0 ? root.boardPalette.dark : root.boardPalette.light
                 font.family: Theme.sans; font.weight: Font.Bold
                 font.pixelSize: Math.max(10, root.sq * 0.17)
             }
@@ -64,7 +64,7 @@ Item {
                 anchors.right: parent.right; anchors.bottom: parent.bottom
                 anchors.rightMargin: 4; anchors.bottomMargin: 2
                 text: "abcdefgh".charAt(root.flipped ? 7 - parent.c : parent.c)
-                color: (parent.c + parent.r) % 2 === 0 ? root.palette.dark : root.palette.light
+                color: (parent.c + parent.r) % 2 === 0 ? root.boardPalette.dark : root.boardPalette.light
                 font.family: Theme.sans; font.weight: Font.Bold
                 font.pixelSize: Math.max(10, root.sq * 0.17)
             }

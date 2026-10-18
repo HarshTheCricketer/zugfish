@@ -69,18 +69,23 @@ target_compile_options(zugfish-qt PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -
 
 # --- Optional: use your real zugfish core instead of the demo data -----------
 #   cmake -B build -DZUGFISH_CORE_DIR=/path/to/zugfish
-# The directory must contain zugfish.hpp (+ the sources you already build in your CLI),
-# and third_party/chess.hpp. See src/backend/ZugfishBackend.cpp.
-set(ZUGFISH_CORE_DIR "" CACHE PATH "Path to your zugfish core checkout (enables the real backend)")
-if(ZUGFISH_CORE_DIR)
-    file(GLOB ZUGFISH_CORE_SOURCES CONFIGURE_DEPENDS "${ZUGFISH_CORE_DIR}/core/*.cpp")
-    target_sources(zugfish-qt PRIVATE src/backend/ZugfishBackend.cpp ${ZUGFISH_CORE_SOURCES})
-    target_include_directories(zugfish-qt PRIVATE
-        "${ZUGFISH_CORE_DIR}/core" "${ZUGFISH_CORE_DIR}/third_party")
+# Or automatically when built from root CMakeLists.txt
+if(TARGET zugfish_core)
+    target_sources(zugfish-qt PRIVATE src/backend/ZugfishBackend.cpp)
     target_compile_definitions(zugfish-qt PRIVATE ZUGFISH_WITH_CORE)
-    find_package(CURL REQUIRED)
-    find_package(nlohmann_json REQUIRED)
-    target_link_libraries(zugfish-qt PRIVATE CURL::libcurl nlohmann_json::nlohmann_json)
+    target_link_libraries(zugfish-qt PRIVATE zugfish_core)
+else()
+    set(ZUGFISH_CORE_DIR "" CACHE PATH "Path to your zugfish core checkout (enables the real backend)")
+    if(ZUGFISH_CORE_DIR)
+        file(GLOB ZUGFISH_CORE_SOURCES CONFIGURE_DEPENDS "${ZUGFISH_CORE_DIR}/core/*.cpp")
+        target_sources(zugfish-qt PRIVATE src/backend/ZugfishBackend.cpp ${ZUGFISH_CORE_SOURCES})
+        target_include_directories(zugfish-qt PRIVATE
+            "${ZUGFISH_CORE_DIR}/core" "${ZUGFISH_CORE_DIR}/third_party")
+        target_compile_definitions(zugfish-qt PRIVATE ZUGFISH_WITH_CORE)
+        find_package(CURL REQUIRED)
+        find_package(nlohmann_json REQUIRED)
+        target_link_libraries(zugfish-qt PRIVATE CURL::libcurl nlohmann_json::nlohmann_json)
+    endif()
 endif()
 
 include(GNUInstallDirs)

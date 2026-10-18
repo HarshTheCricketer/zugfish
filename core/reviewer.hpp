@@ -81,7 +81,11 @@ using CancelCallback = std::function<bool()>;
 
 class GameReviewer {
 public:
+#ifdef _WIN32
+    explicit GameReviewer(const std::string& engine_path = "stockfish.exe");
+#else
     explicit GameReviewer(const std::string& engine_path = "/usr/sbin/stockfish");
+#endif
     explicit GameReviewer(UciEngine engine);
 
     GameReview review(const Game& game, int depth = 12, ProgressCallback progress_cb = nullptr, CancelCallback cancel_cb = nullptr);
