@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     Builds and installs Zugfish (zugfish-qt GUI and/or zugfish-cli) natively on Windows.
-    Automatically detects Visual Studio, MinGW, Qt 6, and Stockfish.
+    Automatically detects Visual Studio 2022/2019, MinGW GCC, Qt 6, and Stockfish.
 
 .PARAMETER InstallDir
     Target directory to install Zugfish binaries (default: %LOCALAPPDATA%\Programs\Zugfish).
@@ -27,10 +27,10 @@
     Explicit CMake generator (e.g. "Visual Studio 17 2022", "Ninja").
 
 .EXAMPLE
-    # Recommended one-liner in PowerShell:
+    # Recommended command in PowerShell:
     powershell -ExecutionPolicy Bypass -File .\install.ps1
 
-    # Specify Qt location:
+    # Specify custom Qt directory:
     .\install.ps1 -QtPath "C:\Qt\6.8.0\msvc2022_64"
 
     # Build CLI only (no Qt required):
@@ -47,13 +47,22 @@ param (
     [string]$Generator = ""
 )
 
-# Do not use $ErrorActionPreference = "Stop" as native tool stderr output can abort scripts in PS 7+
 $ErrorActionPreference = "Continue"
 
 function Write-Info    { Write-Host "[zugfish] $args" -ForegroundColor Cyan }
 function Write-Success { Write-Host "[zugfish] $args" -ForegroundColor Green }
 function Write-Warn    { Write-Host "[zugfish:warn] $args" -ForegroundColor Yellow }
 function Write-Err     { Write-Host "[zugfish:error] $args" -ForegroundColor Red }
+
+function Refresh-Path {
+    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $wingetLinks = "$env:LOCALAPPDATA\Microsoft\WinGet\Links"
+    $env:Path = "$machinePath;$userPath"
+    if (Test-Path $wingetLinks -and $env:Path -notlike "*$wingetLinks*") {
+        $env:Path = "$env:Path;$wingetLinks"
+    }
+}
 
 Write-Host ""
 Write-Host "======================================================" -ForegroundColor Cyan
@@ -64,8 +73,17 @@ Write-Info "Target Installation Directory: $InstallDir"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
+# Remove broken/stale CMakeCache if it was previously configured with NMake
+if (Test-Path "build\CMakeCache.txt") {
+    $cacheContent = Get-Content "build\CMakeCache.txt" -Raw -ErrorAction SilentlyContinue
+    if ($cacheContent -match "NMake Makefiles" -or $cacheContent -match "CMAKE_CXX_COMPILER-NOTFOUND") {
+        Write-Info "Cleaning stale/invalid CMake build cache..."
+        Remove-Item -Recurse -Force "build" -ErrorAction SilentlyContinue
+    }
+}
+
 # -----------------------------------------------------------------------------
-# 1. Dependency Checks
+# 1. Dependency Checks: CMake & Stockfish
 # -----------------------------------------------------------------------------
 if (-not $NoDeps) {
     Write-Info "Checking build dependencies..."
@@ -78,19 +96,20 @@ if (-not $NoDeps) {
             Write-Info "Attempting to install CMake via winget..."
             try {
                 winget install --id Kitware.CMake -e --accept-source-agreements --accept-package-agreements
-                $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+                Refresh-Path
             } catch {
-                Write-Warn "winget install failed: $_"
+                Write-Warn "winget install CMake failed: $_"
             }
         }
         if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
             Write-Err "CMake is required. Download it from: https://cmake.org/download/"
             exit 1
         }
-    } else {
-        $cmakeVer = (& cmake --version 2>&1 | Select-Object -First 1)
-        Write-Success "Found CMake: $cmakeVer"
     }
+    
+    Refresh-Path
+    $cmakeVer = (& cmake --version 2>&1 | Select-Object -First 1)
+    Write-Success "Found CMake: $cmakeVer"
 
     # Check Stockfish
     $hasSf = (Get-Command stockfish -ErrorAction SilentlyContinue) -or (Get-Command stockfish.exe -ErrorAction SilentlyContinue)
@@ -100,15 +119,17 @@ if (-not $NoDeps) {
             Write-Info "Attempting to install Stockfish via winget..."
             try {
                 winget install --id Stockfish.Stockfish -e --accept-source-agreements --accept-package-agreements
-                $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+                Refresh-Path
             } catch {
                 Write-Warn "winget install Stockfish failed: $_"
             }
         }
-        if (-not (Get-Command stockfish -ErrorAction SilentlyContinue) -and -not (Get-Command stockfish.exe -ErrorAction SilentlyContinue)) {
+        Refresh-Path
+        $hasSf = (Get-Command stockfish -ErrorAction SilentlyContinue) -or (Get-Command stockfish.exe -ErrorAction SilentlyContinue)
+        if (-not $hasSf) {
             Write-Warn "Stockfish is not in PATH. Zugfish can still build, but engine analysis will require configuring Stockfish in Settings."
         } else {
-            Write-Success "Found Stockfish engine."
+            Write-Success "Found Stockfish engine: $(Get-Command stockfish -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)"
         }
     } else {
         Write-Success "Found Stockfish engine on PATH."
@@ -116,7 +137,86 @@ if (-not $NoDeps) {
 }
 
 # -----------------------------------------------------------------------------
-# 2. Qt 6 Detection (for GUI builds)
+# 2. C++ Compiler & CMake Generator Detection
+# -----------------------------------------------------------------------------
+Write-Info "Detecting C++ compiler and CMake generator..."
+
+$hasCompiler = $false
+$detectedGenerator = ""
+$generatorArch = ""
+
+# 2a. Check Visual Studio via vswhere.exe
+$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+if (Test-Path $vswhere) {
+    $vsInstall = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if ($vsInstall) {
+        $vsVer = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion
+        $hasCompiler = $true
+        if ($vsVer -like "17.*") {
+            $detectedGenerator = "Visual Studio 17 2022"
+            $generatorArch = "x64"
+        } elseif ($vsVer -like "16.*") {
+            $detectedGenerator = "Visual Studio 16 2019"
+            $generatorArch = "x64"
+        } else {
+            $detectedGenerator = "Visual Studio 17 2022"
+            $generatorArch = "x64"
+        }
+        Write-Success "Detected Visual Studio C++ toolchain ($detectedGenerator) at: $vsInstall"
+    }
+}
+
+# 2b. Check if running inside VS Developer Prompt (cl.exe in PATH)
+if (-not $hasCompiler -and (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+    $hasCompiler = $true
+    if (Get-Command ninja -ErrorAction SilentlyContinue) {
+        $detectedGenerator = "Ninja"
+    } else {
+        $detectedGenerator = "NMake Makefiles"
+    }
+    Write-Success "Found MSVC cl.exe in PATH (using $detectedGenerator)."
+}
+
+# 2c. Check if MinGW GCC is in PATH
+if (-not $hasCompiler -and (Get-Command g++ -ErrorAction SilentlyContinue)) {
+    $hasCompiler = $true
+    if (Get-Command ninja -ErrorAction SilentlyContinue) {
+        $detectedGenerator = "Ninja"
+    } else {
+        $detectedGenerator = "MinGW Makefiles"
+    }
+    Write-Success "Found MinGW g++ in PATH (using $detectedGenerator)."
+}
+
+# 2d. If no C++ compiler found, prompt to install via winget
+if (-not $hasCompiler) {
+    Write-Err "No C++ compiler (Visual Studio or MinGW GCC) found on your machine!"
+    Write-Warn "Zugfish requires a C++20 compiler to build."
+    Write-Host ""
+    Write-Info "Options to install a C++ compiler:"
+    Write-Host "  1) Visual Studio 2022 C++ Build Tools (Recommended for Qt / MSVC)" -ForegroundColor Yellow
+    Write-Host "     winget install Microsoft.VisualStudio.2022.BuildTools --override `"--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended`""
+    Write-Host "  2) WinLibs MinGW GCC 14 (Lightweight, single install)" -ForegroundColor Yellow
+    Write-Host "     winget install --id=BrechtSanders.WinLibs.POSIX.UCRT -e"
+    Write-Host ""
+
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        $choice = Read-Host "Would you like to install Visual Studio 2022 C++ Build Tools automatically now? (Y/n)"
+        if ($choice -ne "n" -and $choice -ne "N") {
+            Write-Info "Installing Visual Studio 2022 C++ Build Tools via winget (please wait)..."
+            winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+            Refresh-Path
+            Write-Success "C++ compiler installation completed. Please re-run .\install.ps1"
+            exit 0
+        }
+    }
+    
+    Write-Err "Please install a C++ compiler and re-run .\install.ps1"
+    exit 1
+}
+
+# -----------------------------------------------------------------------------
+# 3. Qt 6 Detection (for GUI builds)
 # -----------------------------------------------------------------------------
 $BuildGui = (-not $CliOnly)
 $BuildCli = (-not $GuiOnly)
@@ -161,13 +261,28 @@ if ($BuildGui) {
         Write-Success "Detected Qt 6 at: $QtPath"
     } else {
         Write-Warn "Qt 6 was not detected in standard locations."
-        Write-Info "If you have Qt 6 installed, run: .\install.ps1 -QtPath `"C:\Qt\6.8.0\msvc2022_64`""
-        Write-Info "Or to build only the command-line reviewer without Qt, run: .\install.ps1 -CliOnly"
+        Write-Info "Options:"
+        Write-Info "  1) Build only the command-line reviewer (no Qt required):"
+        Write-Info "     .\install.ps1 -CliOnly"
+        Write-Info "  2) Specify your Qt 6 folder:"
+        Write-Info "     .\install.ps1 -QtPath `"C:\Qt\6.8.0\msvc2022_64`""
+        Write-Info "  3) Install Qt 6 via the Qt Online Installer from https://www.qt.io/download"
+        Write-Host ""
+        
+        $buildCliChoice = Read-Host "Would you like to build only the CLI reviewer (zugfish-cli) for now without Qt? (Y/n)"
+        if ($buildCliChoice -ne "n" -and $buildCliChoice -ne "N") {
+            $BuildGui = $false
+            $BuildCli = $true
+            Write-Info "Proceeding with CLI-only build..."
+        } else {
+            Write-Err "Please install Qt 6 or specify -QtPath, then re-run .\install.ps1"
+            exit 1
+        }
     }
 }
 
 # -----------------------------------------------------------------------------
-# 3. Configure CMake
+# 4. Configure CMake
 # -----------------------------------------------------------------------------
 Write-Info "Configuring CMake project..."
 
@@ -181,7 +296,16 @@ $CmakeArgs = @(
     "-DBUILD_CLI=$BuildCliVal"
 )
 
-if ($QtPath -ne "") {
+if ($Generator -ne "") {
+    $CmakeArgs += @("-G", $Generator)
+} elseif ($detectedGenerator -ne "") {
+    $CmakeArgs += @("-G", $detectedGenerator)
+    if ($generatorArch -ne "") {
+        $CmakeArgs += @("-A", $generatorArch)
+    }
+}
+
+if ($QtPath -ne "" -and $BuildGui) {
     $CmakeArgs += @("-DCMAKE_PREFIX_PATH=$QtPath")
 }
 
@@ -194,32 +318,15 @@ if ($env:VCPKG_ROOT -and (Test-Path "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.
     Write-Info "Using vcpkg toolchain from: C:\vcpkg"
 }
 
-# Generator selection:
-# Only use Ninja if explicitly requested or if running inside a Developer Prompt where cl.exe or g++ is in PATH.
-# Otherwise, let CMake default to Visual Studio generator (works in normal PowerShell).
-if ($Generator -ne "") {
-    $CmakeArgs += @("-G", $Generator)
-} elseif ($env:VSCMD_VER -or (Get-Command cl.exe -ErrorAction SilentlyContinue) -or (Get-Command g++ -ErrorAction SilentlyContinue)) {
-    if (Get-Command ninja -ErrorAction SilentlyContinue) {
-        $CmakeArgs += @("-G", "Ninja")
-    }
-}
-
 Write-Info "Running: cmake $($CmakeArgs -join ' ')"
 & cmake @CmakeArgs
 if ($LASTEXITCODE -ne 0) {
     Write-Err "CMake configuration failed."
-    if ($BuildGui -and $QtPath -eq "") {
-        Write-Warn "Note: If the error mentions Qt6Config.cmake, specify your Qt 6 directory:"
-        Write-Warn "    .\install.ps1 -QtPath `"C:\Qt\6.x.x\msvc2022_64`""
-        Write-Warn "Or build only the CLI without Qt:"
-        Write-Warn "    .\install.ps1 -CliOnly"
-    }
     exit $LASTEXITCODE
 }
 
 # -----------------------------------------------------------------------------
-# 4. Compile Project
+# 5. Compile Project
 # -----------------------------------------------------------------------------
 Write-Info "Compiling Zugfish in Release mode..."
 & cmake --build build --config Release --parallel
@@ -229,7 +336,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # -----------------------------------------------------------------------------
-# 5. Install Binaries & Bundle Runtime
+# 6. Install Binaries & Bundle Runtime
 # -----------------------------------------------------------------------------
 Write-Info "Installing binaries to $InstallDir..."
 if (-not (Test-Path $InstallDir)) {
@@ -311,7 +418,7 @@ if ($BuildCli -and $CliBinary) {
 }
 
 # -----------------------------------------------------------------------------
-# 6. User PATH Update
+# 7. User PATH Update
 # -----------------------------------------------------------------------------
 $UserPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
 if ($UserPath -notlike "*$InstallDir*") {
