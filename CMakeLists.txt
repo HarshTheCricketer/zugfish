@@ -8,8 +8,41 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(BUILD_GUI "Build Qt6 GUI application" ON)
 option(BUILD_CLI "Build CLI tool" ON)
 
-find_package(CURL REQUIRED)
-find_package(nlohmann_json REQUIRED)
+include(FetchContent)
+
+# CURL: find system package or fetch automatically
+find_package(CURL QUIET)
+if(NOT CURL_FOUND)
+    message(STATUS "System CURL not found; fetching via FetchContent...")
+    set(BUILD_CURL_EXE OFF CACHE INTERNAL "")
+    set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "")
+    set(CURL_USE_OPENSSL OFF CACHE INTERNAL "")
+    if(WIN32)
+        set(CURL_USE_SCHANNEL ON CACHE INTERNAL "")
+    endif()
+    set(HTTP_ONLY ON CACHE INTERNAL "")
+    FetchContent_Declare(
+        curl
+        URL https://github.com/curl/curl/releases/download/curl-8_11_0/curl-8.11.0.tar.xz
+    )
+    FetchContent_MakeAvailable(curl)
+    if(TARGET libcurl_static)
+        add_library(CURL::libcurl ALIAS libcurl_static)
+    elseif(TARGET libcurl)
+        add_library(CURL::libcurl ALIAS libcurl)
+    endif()
+endif()
+
+# nlohmann_json: find system package or fetch automatically
+find_package(nlohmann_json QUIET)
+if(NOT nlohmann_json_FOUND)
+    message(STATUS "System nlohmann_json not found; fetching via FetchContent...")
+    FetchContent_Declare(
+        nlohmann_json
+        URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    )
+    FetchContent_MakeAvailable(nlohmann_json)
+endif()
 
 # Core Library
 add_library(zugfish_core STATIC
@@ -21,6 +54,9 @@ add_library(zugfish_core STATIC
 )
 target_include_directories(zugfish_core PUBLIC core third_party)
 target_link_libraries(zugfish_core PUBLIC CURL::libcurl nlohmann_json::nlohmann_json)
+if(WIN32)
+    target_link_libraries(zugfish_core PUBLIC ws2_32 crypt32)
+endif()
 target_compile_options(zugfish_core PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra>)
 
 # CLI Executable

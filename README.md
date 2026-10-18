@@ -150,18 +150,26 @@ cmake --build build
 The core engine communication uses native Win32 APIs (`CreateProcessA`, `CreatePipe`, `WriteFile`, `ReadFile`), and the GUI is built on standard cross-platform Qt 6 Quick.
 
 ### Option A: Automated PowerShell Installer (Recommended)
-Run PowerShell as Administrator or regular user:
+Run PowerShell (with script execution policy bypass):
 ```powershell
-git clone https://github.com/your-username/zugfish.git
-cd zugfish
-.\install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+If Qt 6 is installed in a custom location, specify `-QtPath`:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -QtPath "C:\Qt\6.8.0\msvc2022_64"
+```
+Or build only the CLI tool without requiring Qt 6:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -CliOnly
 ```
 The script will:
-1. Verify CMake and Stockfish (or install them via `winget`).
-2. Build `zugfish-qt.exe` and `zugfish-cli.exe` in Release mode.
-3. Automatically bundle Qt runtime DLLs using `windeployqt`.
-4. Install to `%LOCALAPPDATA%\Programs\Zugfish`.
-5. Create Desktop and Start Menu shortcuts and add Zugfish to your user `PATH`.
+1. Verify CMake and Stockfish (with optional `winget` installation).
+2. Auto-detect Visual Studio 2022 / MinGW and Qt 6.
+3. Automatically download and build missing networking dependencies (`curl` via Windows Schannel SSL and `nlohmann-json`) via CMake `FetchContent`.
+4. Build `zugfish-qt.exe` and/or `zugfish-cli.exe` in Release mode.
+5. Automatically bundle Qt runtime DLLs using `windeployqt`.
+6. Install to `%LOCALAPPDATA%\Programs\Zugfish`.
+7. Create Desktop and Start Menu shortcuts and add Zugfish to your user `PATH`.
 
 ### Option B: Manual Build with MSVC or MinGW
 If you have Visual Studio 2022 (with "Desktop development with C++") and Qt 6:
