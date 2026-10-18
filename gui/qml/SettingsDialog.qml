@@ -99,7 +99,7 @@ Popup {
                         AppButton { text: "Browse…"; onClicked: enginePicker.open() }
                     }
                     Text {
-                        text: App.enginePath === "" ? "Not found on your PATH. Install it (pacman -S stockfish) or pick the binary."
+                        text: App.enginePath === "" ? "Not found on your PATH. Install Stockfish or pick the binary above."
                                                     : "Zugfish runs the engine as a separate process."
                         color: App.enginePath === "" ? Theme.warning : Theme.text2
                         wrapMode: Text.WordWrap; Layout.fillWidth: true

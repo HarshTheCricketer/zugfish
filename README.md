@@ -76,8 +76,11 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 Install all required packages and build with Ninja:
 
 ```bash
-# Install dependencies
-sudo pacman -S --needed base-devel cmake ninja gcc qt6-base qt6-declarative qt6-svg curl nlohmann-json stockfish
+# Install dependencies from official Arch repos
+sudo pacman -S --needed base-devel cmake ninja gcc qt6-base qt6-declarative qt6-svg curl nlohmann-json
+
+# Stockfish is in the AUR (or download from stockfishchess.org)
+# yay -S stockfish   (or paru -S stockfish)
 
 # Configure and compile
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -311,7 +314,7 @@ Zugfish uses a win-probability model modeled after modern chess review engines:
 ### Stockfish not found
 If Stockfish is not in your system path, Zugfish will notify you. You can:
 1. Install it via your package manager:
-   - Arch: `sudo pacman -S stockfish`
+   - Arch: `yay -S stockfish` (or `paru -S stockfish` / download binary)
    - Ubuntu/Debian: `sudo apt install stockfish`
    - macOS: `brew install stockfish`
    - Windows: `winget install Stockfish.Stockfish`

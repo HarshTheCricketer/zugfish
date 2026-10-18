@@ -97,7 +97,7 @@ install_packages() {
     # Linux distro detection
     if [[ -f /etc/arch-release ]]; then
         log_info "Arch Linux detected. Installing dependencies via pacman..."
-        local PKGS="cmake ninja gcc curl nlohmann-json stockfish"
+        local PKGS="cmake ninja gcc curl nlohmann-json"
         if [[ "${BUILD_GUI}" == "true" ]]; then
             PKGS="${PKGS} qt6-base qt6-declarative qt6-svg"
         fi
@@ -105,6 +105,20 @@ install_packages() {
             sudo pacman -S --needed --noconfirm ${PKGS}
         else
             pacman -S --needed --noconfirm ${PKGS}
+        fi
+
+        # Stockfish is in AUR on Arch Linux
+        if ! command -v stockfish >/dev/null 2>&1; then
+            if command -v yay >/dev/null 2>&1; then
+                log_info "Installing Stockfish via yay (AUR)..."
+                yay -S --needed --noconfirm stockfish || true
+            elif command -v paru >/dev/null 2>&1; then
+                log_info "Installing Stockfish via paru (AUR)..."
+                paru -S --needed --noconfirm stockfish || true
+            else
+                log_warn "Stockfish is not in official Arch repos (available in AUR as 'stockfish')."
+                log_warn "Install it via AUR: 'yay -S stockfish' or 'paru -S stockfish', or download from https://stockfishchess.org"
+            fi
         fi
 
     elif [[ -f /etc/debian_version ]]; then
