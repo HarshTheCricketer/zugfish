@@ -58,14 +58,14 @@ Runs natively with zero lag on **Linux**, **Windows**, and **macOS**.
 
 #### Linux & macOS
 ```bash
-git clone https://github.com/your-username/zugfish.git
+git clone https://github.com/saber-88/zugfish.git
 cd zugfish
 ./install.sh
 ```
 
 #### Windows (PowerShell)
 ```powershell
-git clone https://github.com/your-username/zugfish.git
+git clone https://github.com/saber-88/zugfish.git
 cd zugfish
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\install.ps1
