@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="gui/assets/icon.png" width="140" height="140" alt="Zugfish App Icon" />
+</p>
+
 # Zugfish ♟️
 
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
