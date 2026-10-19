@@ -584,6 +584,8 @@ void AppController::rebuildReviewDerived()
         }
         summary_["whiteAccuracy"] = review_.whiteAccuracy;
         summary_["blackAccuracy"] = review_.blackAccuracy;
+        summary_["whiteRating"] = review_.whiteRating;
+        summary_["blackRating"] = review_.blackRating;
         summary_["whiteCounts"] = wc;
         summary_["blackCounts"] = bc;
 

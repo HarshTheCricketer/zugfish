@@ -118,6 +118,71 @@ static double compute_game_accuracy(const std::vector<double>& decision_accs,
     return std::clamp(blended, 0.0, 100.0);
 }
 
+static int parse_elo_header(const std::map<std::string, std::string>& headers, const std::string& key) {
+    auto it = headers.find(key);
+    if (it != headers.end() && !it->second.empty()) {
+        try {
+            int elo = std::stoi(it->second);
+            if (elo >= 100 && elo <= 3800) return elo;
+        } catch (...) {}
+    }
+    return 0;
+}
+
+static int calculate_estimated_rating(double accuracy, double acpl,
+                                      const PlayerStats& stats,
+                                      int actual_elo) {
+    // 1. Base performance rating from accuracy (calibrated against Chess.com CAPS2 rating distributions)
+    double rating = 0.0;
+    if (accuracy >= 98.0) {
+        rating = 2600.0 + (accuracy - 98.0) * 150.0;
+    } else if (accuracy >= 90.0) {
+        rating = 2000.0 + (accuracy - 90.0) * 75.0;
+    } else if (accuracy >= 80.0) {
+        rating = 1500.0 + (accuracy - 80.0) * 50.0;
+    } else if (accuracy >= 70.0) {
+        rating = 1150.0 + (accuracy - 70.0) * 35.0;
+    } else if (accuracy >= 60.0) {
+        rating = 850.0 + (accuracy - 60.0) * 30.0;
+    } else if (accuracy >= 50.0) {
+        rating = 600.0 + (accuracy - 50.0) * 25.0;
+    } else if (accuracy >= 35.0) {
+        rating = 350.0 + (accuracy - 35.0) * (250.0 / 15.0);
+    } else {
+        rating = std::max(100.0, 100.0 + accuracy * (250.0 / 35.0));
+    }
+
+    // 2. Adjust for tactical brilliance, blunders, and mistakes
+    rating += stats.brilliant_count * 45.0;
+    rating += stats.great_count * 25.0;
+    rating -= stats.blunder_count * 35.0;
+    rating -= stats.miss_count * 30.0;
+    rating -= stats.mistake_count * 15.0;
+    rating -= stats.inaccuracy_count * 5.0;
+
+    // 3. Adjust for ACPL
+    if (acpl > 0.0) {
+        if (acpl <= 20.0) rating += 60.0;
+        else if (acpl <= 35.0) rating += 30.0;
+        else if (acpl >= 90.0) rating -= 50.0;
+        else if (acpl >= 130.0) rating -= 90.0;
+    }
+
+    // 4. Bayesian anchoring with actual player Elo if present (Chess.com game rating method)
+    if (actual_elo >= 200 && actual_elo <= 3200) {
+        double blended = (0.65 * rating) + (0.35 * actual_elo);
+        double min_bound = std::max(100.0, actual_elo - 550.0);
+        double max_bound = std::min(3200.0, actual_elo + 750.0);
+        rating = std::clamp(blended, min_bound, max_bound);
+    } else {
+        rating = std::clamp(rating, 100.0, 3200.0);
+    }
+
+    // Round to nearest 50 for clean presentation
+    int rounded = static_cast<int>(std::round(rating / 50.0)) * 50;
+    return std::clamp(rounded, 100, 3200);
+}
+
 GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback progress_cb, CancelCallback cancel_cb) {
     GameReview review;
     review.headers = game.headers;
@@ -230,54 +295,81 @@ GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback pr
         int mat_opp    = total_material(board_before, opp_c);
         int material_lead = mat_player - mat_opp;
 
-        // Strict Criteria for Brilliant (!!):
-        // a) Must be the top engine move
+        // Chess.com Brilliant (!!) Criteria:
+        // a) Must be the top engine move (or within 0.005 win loss)
         // b) Not a book move, not forced
-        // c) Must not already have overwhelming material dominance (material_lead <= 3 pawns)
-        // d) Position must be completely sound after (player_win_after >= 0.50 and win_loss <= 0.01)
-        // e) Must involve an intentional piece sacrifice directly initiated by this move
-        if (is_best_move && !is_book && !is_forced && 
-            material_lead <= 3 && player_win_after >= 0.50 && win_loss <= 0.01) {
+        // c) Game was not already overwhelming material lead (material_lead <= 5)
+        // d) Position must remain completely sound/winning after (player_win_after >= 0.50 and win_loss <= 0.015)
+        // e) Must involve a genuine piece or material sacrifice
+        if ((is_best_move || win_loss <= 0.005) && !is_book && !is_forced && 
+            material_lead <= 5 && player_win_after >= 0.50 && win_loss <= 0.015) {
 
             try {
                 chess::Move move_played = chess::uci::uciToMove(board_before, ply.uci);
                 chess::Piece moved_piece = board_before.at(move_played.from());
                 chess::Square to_sq = move_played.to();
                 int moved_val = piece_val(moved_piece.type());
+                chess::Piece cap_piece = board_before.at(to_sq);
+                int cap_val = (cap_piece != chess::Piece::NONE) ? piece_val(cap_piece.type()) : 0;
+                int net_sac = moved_val - cap_val;
 
-                // Pawn pushes are not piece sacrifices; only minor pieces, rooks, queens
-                if (moved_val >= 3) {
-                    chess::Board b_after(next_fen);
-                    // Check if opponent's best response captures the sacrificed piece
-                    if (!next_eval.best_move.empty() && next_eval.best_move != "(none)") {
+                chess::Board b_after(next_fen);
+
+                // Type 1: Moved piece offered on an attacked square
+                // e.g. Morphy 10. Nxb5 (Knight for Pawn, net_sac=2, on attacked square b5)
+                // e.g. Morphy 13. Rxd7 (Rook for Knight, net_sac=2, on attacked square d7)
+                // e.g. Morphy 16. Qb8+ (Queen for 0, net_sac=9, on attacked square b8)
+                if (moved_val >= 3 && net_sac >= 2) {
+                    if (b_after.isAttacked(to_sq, opp_c)) {
+                        is_brilliant = true;
+                    } else if (!next_eval.best_move.empty() && next_eval.best_move != "(none)") {
                         chess::Move opp_move = chess::uci::uciToMove(b_after, next_eval.best_move);
-
-                        // Opponent captures the moved piece on its destination square
                         if (opp_move.to() == to_sq && b_after.isCapture(opp_move)) {
-                            // Net material sacrificed in the exchange
-                            // e.g. Morphy 13. Rxd7 (Rook for Knight, 5 - 3 = 2)
-                            // e.g. Morphy 16. Qb8+ (Queen for 0, 9 - 0 = 9)
-                            chess::Piece cap_piece = board_before.at(to_sq);
-                            int cap_val = (cap_piece != chess::Piece::NONE) ? piece_val(cap_piece.type()) : 0;
-                            int net_sac = moved_val - cap_val;
+                            is_brilliant = true;
+                        }
+                    }
+                }
 
-                            if (net_sac >= 2) {
-                                is_brilliant = true;
+                // Type 2: Discovered / deflection sacrifice:
+                // Moving piece left another major/minor piece (value >= 3) attacked and hanging in b_after
+                if (!is_brilliant) {
+                    for (int sq = 0; sq < 64; ++sq) {
+                        chess::Piece p = b_after.at(chess::Square(sq));
+                        if (p != chess::Piece::NONE && p.color() == player_c && piece_val(p.type()) >= 3) {
+                            if (b_after.isAttacked(chess::Square(sq), opp_c)) {
+                                bool attacked_before = board_before.isAttacked(chess::Square(sq), opp_c);
+                                if (!attacked_before) {
+                                    is_brilliant = true;
+                                    break;
+                                }
                             }
                         }
                     }
                 }
+
+                // If this move delivers immediate checkmate, it is the finishing mate move (Best), not a sacrifice
+                if (b_after.isGameOver().first != chess::GameResultReason::NONE) {
+                    is_brilliant = false;
+                }
             } catch (...) {}
         }
 
-        // 4. Check Great Move (!)
+        // 4. Check Great Move (!) (Chess.com: "The only good move in the position")
         bool is_great = false;
-        if (is_best_move && !is_book && !is_forced && !is_brilliant) {
-            // A Great move is a critical move that creates a decisive winning breakthrough
-            // (>= 12% win chance jump to >= 70%) or finds the only saving defense from a losing position
-            if ((player_win_before <= 0.72 && player_win_after >= 0.72 && (player_win_after - player_win_before) >= 0.12) ||
-                (player_win_before <= 0.30 && player_win_after >= 0.45 && (player_win_after - player_win_before) >= 0.15)) {
-                is_great = true;
+        if ((is_best_move || win_loss <= 0.005) && !is_book && !is_forced && !is_brilliant && player_win_before <= 0.95) {
+            if (prev_eval.has_second_best) {
+                double score2_p = prev_eval.second_score.win_probability(white_to_move);
+                double player_win_2 = white_to_move ? score2_p : (1.0 - score2_p);
+                double win_gap = player_win_before - player_win_2;
+
+                // Gap of >= 10% win chance (or >= 120 cp) between #1 move and #2 move
+                if (win_gap >= 0.10) {
+                    // Finding the only saving move or only breakthrough move
+                    if ((player_win_before <= 0.60 && player_win_after >= 0.40) ||
+                        (player_win_before >= 0.60 && (player_win_2 < 0.52 || win_gap >= 0.12))) {
+                        is_great = true;
+                    }
+                }
             }
         }
 
@@ -291,22 +383,35 @@ GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback pr
             classification = MoveClassification::Brilliant;
         } else if (is_great) {
             classification = MoveClassification::Great;
-        } else if (is_best_move || win_loss <= 0.005) {
+        } else if (is_best_move || win_loss <= 0.008) {
             classification = MoveClassification::Best;
-        } else if (win_loss <= 0.025) {
+        } else if (win_loss <= 0.028) {
             classification = MoveClassification::Excellent;
-        } else if (win_loss <= 0.060) {
+        } else if (win_loss <= 0.065) {
             classification = MoveClassification::Good;
         } else if (win_loss <= 0.140) {
             classification = MoveClassification::Inaccuracy;
-        } else if (win_loss <= 0.250) {
+        } else if (win_loss <= 0.240) {
             classification = MoveClassification::Mistake;
         } else {
-            if (player_win_before >= 0.75) {
+            // Missed Win vs Blunder:
+            // On Chess.com, if player was winning (win% >= 0.75) and dropped below 0.60,
+            // it is classified as a Miss (Missed Win).
+            if (player_win_before >= 0.75 && player_win_after <= 0.60) {
                 classification = MoveClassification::Miss;
             } else {
                 classification = MoveClassification::Blunder;
             }
+        }
+
+        // Chess.com Decisive Advantage Rule:
+        // When a player is strongly winning (>= 0.75 win prob) both before and after (>= 0.65),
+        // an alternative winning line or mate is NEVER marked as Mistake, Blunder, or Miss.
+        if ((classification == MoveClassification::Mistake || 
+             classification == MoveClassification::Blunder || 
+             classification == MoveClassification::Miss) &&
+            player_win_before >= 0.75 && player_win_after >= 0.65) {
+            classification = MoveClassification::Good;
         }
 
         // Accuracy score for this single move [0.0, 100.0] via CAPS2 exponential decay formula:
@@ -374,6 +479,14 @@ GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback pr
     review.black_stats.accuracy = compute_game_accuracy(black_decision_accuracies, black_all_accuracies);
     review.black_stats.acpl = avg_int(black_cpls);
 
+    int white_actual_elo = parse_elo_header(review.headers, "WhiteElo");
+    int black_actual_elo = parse_elo_header(review.headers, "BlackElo");
+
+    review.white_stats.estimated_rating = calculate_estimated_rating(
+        review.white_stats.accuracy, review.white_stats.acpl, review.white_stats, white_actual_elo);
+    review.black_stats.estimated_rating = calculate_estimated_rating(
+        review.black_stats.accuracy, review.black_stats.acpl, review.black_stats, black_actual_elo);
+
     review.opening = OpeningBook::instance().identify_opening(uci_history);
 
     return review;
@@ -396,8 +509,9 @@ void GameReviewer::print_review(const GameReview& review, std::ostream& os) {
     os << " Accuracy: " << std::fixed << std::setprecision(1) << review.white_stats.accuracy << "%"
        << std::setw(26) << ""
        << " Accuracy: " << review.black_stats.accuracy << "%\n";
-    os << " ACPL: " << std::setprecision(1) << review.white_stats.acpl
-       << std::setw(30) << ""
+    os << " Played Like: ~" << std::left << std::setw(25) << review.white_stats.estimated_rating
+       << " Played Like: ~" << review.black_stats.estimated_rating << "\n";
+    os << " ACPL: " << std::setprecision(1) << std::setw(32) << review.white_stats.acpl
        << " ACPL: " << review.black_stats.acpl << "\n";
     os << "--------------------------------------------------------------------------------\n";
     os << " Move Classification                       White              Black\n";

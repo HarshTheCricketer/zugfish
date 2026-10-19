@@ -183,22 +183,24 @@ Item {
                 }
             }
 
-            // ---------- accuracy ----------
+            // ---------- accuracy & performance ----------
             Card {
                 Layout.fillWidth: true
                 visible: root.done
-                implicitHeight: 176
+                implicitHeight: (root.sum.whiteRating > 0 || root.sum.blackRating > 0) ? 198 : 176
                 Row {
                     anchors.centerIn: parent
                     spacing: 44
                     AccuracyRing {
                         value: root.sum.whiteAccuracy || 0
+                        rating: root.sum.whiteRating || 0
                         label: App.gameInfo.white || "White"
                         sublabel: "White accuracy"
                     }
-                    Rectangle { width: 1; height: 100; color: Theme.line; anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: -18 }
+                    Rectangle { width: 1; height: 110; color: Theme.line; anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: -12 }
                     AccuracyRing {
                         value: root.sum.blackAccuracy || 0
+                        rating: root.sum.blackRating || 0
                         label: App.gameInfo.black || "Black"
                         sublabel: "Black accuracy"
                     }

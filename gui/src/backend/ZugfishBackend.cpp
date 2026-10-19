@@ -149,6 +149,8 @@ bool ZugfishBackend::review(const GameData &game, int depth, const QString &engi
     // prefer the accuracy the core itself reported; otherwise derive it
     out.whiteAccuracy = lastWhiteAcc >= 0 ? lastWhiteAcc : (nW ? sumW / nW : 0.0);
     out.blackAccuracy = lastBlackAcc >= 0 ? lastBlackAcc : (nB ? sumB / nB : 0.0);
+    out.whiteRating = rev.white_stats.estimated_rating;
+    out.blackRating = rev.black_stats.estimated_rating;
     return true;
 }
 
