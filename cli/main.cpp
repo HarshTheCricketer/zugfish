@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
               << game.headers["White"] << " vs. " << game.headers["Black"] 
               << " (" << game.plies.size() << " plies)\n\n";
 
-    std::cout << "Starting Game Review at Depth 10...\n";
+    std::cout << "Starting Game Review at Depth " << depth << "...\n";
     zugfish::GameReviewer reviewer("/usr/sbin/stockfish");
 
     // Decoupled progress callback (works with CLI, TUI, or GUI)
@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
         std::cout << "\r" << std::left << std::setw(79) << ss.str() << std::flush;
     };
 
-    auto review = reviewer.review(game, 12, on_progress);
+    auto review = reviewer.review(game, depth, on_progress);
     std::cout << "\n";
 
     // Print the formatted game review
