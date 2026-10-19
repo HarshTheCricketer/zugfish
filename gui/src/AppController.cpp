@@ -796,6 +796,14 @@ void AppController::rebuildReviewDerived()
         }
         summary_["whiteAccuracy"] = review_.whiteAccuracy;
         summary_["blackAccuracy"] = review_.blackAccuracy;
+        summary_["whiteOpeningAccuracy"] = review_.whiteOpeningAccuracy;
+        summary_["blackOpeningAccuracy"] = review_.blackOpeningAccuracy;
+        summary_["whiteMiddlegameAccuracy"] = review_.whiteMiddlegameAccuracy;
+        summary_["blackMiddlegameAccuracy"] = review_.blackMiddlegameAccuracy;
+        summary_["whiteEndgameAccuracy"] = review_.whiteEndgameAccuracy;
+        summary_["blackEndgameAccuracy"] = review_.blackEndgameAccuracy;
+        summary_["whiteRating"] = review_.whiteRating;
+        summary_["blackRating"] = review_.blackRating;
         summary_["whiteCounts"] = wc;
         summary_["blackCounts"] = bc;
 

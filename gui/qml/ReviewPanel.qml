@@ -309,6 +309,93 @@ Item {
                 }
             }
 
+            // ---------- phase accuracy ----------
+            Card {
+                Layout.fillWidth: true
+                visible: root.done && ((root.sum.whiteOpeningAccuracy || 0) > 0 || (root.sum.blackOpeningAccuracy || 0) > 0)
+                implicitHeight: phaseCol.implicitHeight + 28
+
+                ColumnLayout {
+                    id: phaseCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 14
+                    spacing: 8
+
+                    Text {
+                        text: "PHASE ACCURACY"
+                        color: Theme.text3
+                        font.family: Theme.sans
+                        font.weight: Font.DemiBold
+                        font.pixelSize: Theme.fsXs
+                        font.letterSpacing: 1.1
+                    }
+
+                    // Opening
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            text: ((root.sum.whiteOpeningAccuracy || 0) > 0 ? root.sum.whiteOpeningAccuracy.toFixed(1) + "%" : "-")
+                            color: Theme.text0; font.family: Theme.mono; font.weight: Font.Medium; font.pixelSize: Theme.fsSm
+                            Layout.preferredWidth: 60
+                        }
+                        Text {
+                            text: "Opening"
+                            color: Theme.text2; font.family: Theme.sans; font.pixelSize: Theme.fsSm
+                            Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter
+                        }
+                        Text {
+                            text: ((root.sum.blackOpeningAccuracy || 0) > 0 ? root.sum.blackOpeningAccuracy.toFixed(1) + "%" : "-")
+                            color: Theme.text0; font.family: Theme.mono; font.weight: Font.Medium; font.pixelSize: Theme.fsSm
+                            Layout.preferredWidth: 60; horizontalAlignment: Text.AlignRight
+                        }
+                    }
+
+                    // Middlegame
+                    RowLayout {
+                        Layout.fillWidth: true
+                        visible: (root.sum.whiteMiddlegameAccuracy || 0) > 0 || (root.sum.blackMiddlegameAccuracy || 0) > 0
+                        Text {
+                            text: ((root.sum.whiteMiddlegameAccuracy || 0) > 0 ? root.sum.whiteMiddlegameAccuracy.toFixed(1) + "%" : "-")
+                            color: Theme.text0; font.family: Theme.mono; font.weight: Font.Medium; font.pixelSize: Theme.fsSm
+                            Layout.preferredWidth: 60
+                        }
+                        Text {
+                            text: "Middlegame"
+                            color: Theme.text2; font.family: Theme.sans; font.pixelSize: Theme.fsSm
+                            Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter
+                        }
+                        Text {
+                            text: ((root.sum.blackMiddlegameAccuracy || 0) > 0 ? root.sum.blackMiddlegameAccuracy.toFixed(1) + "%" : "-")
+                            color: Theme.text0; font.family: Theme.mono; font.weight: Font.Medium; font.pixelSize: Theme.fsSm
+                            Layout.preferredWidth: 60; horizontalAlignment: Text.AlignRight
+                        }
+                    }
+
+                    // Endgame
+                    RowLayout {
+                        Layout.fillWidth: true
+                        visible: (root.sum.whiteEndgameAccuracy || 0) > 0 || (root.sum.blackEndgameAccuracy || 0) > 0
+                        Text {
+                            text: ((root.sum.whiteEndgameAccuracy || 0) > 0 ? root.sum.whiteEndgameAccuracy.toFixed(1) + "%" : "-")
+                            color: Theme.text0; font.family: Theme.mono; font.weight: Font.Medium; font.pixelSize: Theme.fsSm
+                            Layout.preferredWidth: 60
+                        }
+                        Text {
+                            text: "Endgame"
+                            color: Theme.text2; font.family: Theme.sans; font.pixelSize: Theme.fsSm
+                            Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter
+                        }
+                        Text {
+                            text: ((root.sum.blackEndgameAccuracy || 0) > 0 ? root.sum.blackEndgameAccuracy.toFixed(1) + "%" : "-")
+                            color: Theme.text0; font.family: Theme.mono; font.weight: Font.Medium; font.pixelSize: Theme.fsSm
+                            Layout.preferredWidth: 60; horizontalAlignment: Text.AlignRight
+                        }
+                    }
+                }
+            }
+
             // ---------- key moments ----------
             ColumnLayout {
                 Layout.fillWidth: true

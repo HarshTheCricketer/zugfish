@@ -105,6 +105,33 @@ static std::vector<LearningPly> build_learning_line(UciEngine& engine,
     std::vector<LearningPly> line;
     if (first_uci.empty() || first_uci == "(none)")
         return line;
+struct MoveEvalRecord {
+    double accuracy = 100.0;
+    double weight = 1.0;
+    int phase = 0; // 0 = Opening, 1 = Middlegame, 2 = Endgame
+};
+
+static double compute_phase_accuracy(const std::vector<MoveEvalRecord>& records, int target_phase = -1) {
+    double sum_w = 0.0;
+    double sum_weighted_acc = 0.0;
+    double sum_harmonic = 0.0;
+
+    for (const auto& r : records) {
+        if (target_phase >= 0 && r.phase != target_phase) {
+            continue;
+        }
+        sum_w += r.weight;
+        sum_weighted_acc += r.weight * r.accuracy;
+        sum_harmonic += r.weight / std::max(r.accuracy, 12.0);
+    }
+
+    if (sum_w <= 0.0) return (target_phase >= 0) ? 0.0 : 100.0;
+
+    double arith = sum_weighted_acc / sum_w;
+    double harmonic = sum_w / sum_harmonic;
+    double combined = 0.80 * arith + 0.20 * harmonic;
+    return std::clamp(combined, 0.0, 100.0);
+}
 
     try {
         chess::Board board(start_fen);
@@ -147,6 +174,33 @@ static double compute_game_accuracy(const std::vector<double>& decision_accs,
                                     const std::vector<double>& all_accs) {
     const auto& accs = decision_accs.empty() ? all_accs : decision_accs;
     if (accs.empty()) return 100.0;
+static int calculate_estimated_rating(double accuracy, double acpl,
+                                      const PlayerStats& stats,
+                                      int actual_elo) {
+    if (actual_elo >= 100 && actual_elo <= 3800) {
+        // Model expected accuracy at player's rating level
+        double expected_acc = 50.0 + 38.0 / (1.0 + std::exp(-(actual_elo - 1100.0) / 450.0));
+        double delta_acc = accuracy - expected_acc;
+
+        // Base rating offset: ~22 rating points per 1% accuracy difference from expectation
+        double perf = actual_elo + delta_acc * 22.0;
+
+        // Tactical and error adjustments
+        perf += stats.brilliant_count * 50.0;
+        perf += stats.great_count * 30.0;
+        perf -= stats.blunder_count * 40.0;
+        perf -= stats.miss_count * 20.0;
+        perf -= stats.mistake_count * 10.0;
+
+        // Clean play bonus: zero blunders in a substantial game
+        if (stats.blunder_count == 0 && (stats.best_count + stats.excellent_count >= 10)) {
+            perf += 60.0;
+        }
+
+        // Single-game performance spread around actual rating
+        double min_bound = std::max(100.0, actual_elo - 450.0);
+        double max_bound = std::min(3200.0, actual_elo + 550.0);
+        perf = std::clamp(perf, min_bound, max_bound);
 
     double sum = std::accumulate(accs.begin(), accs.end(), 0.0);
     double arith_mean = sum / accs.size();
@@ -191,10 +245,8 @@ GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback pr
     review.initial_eval = prev_eval;
     review.initial_best_san = uci_to_san(game.plies[0].fen_before, prev_eval.best_move);
 
-    std::vector<double> white_decision_accuracies;
-    std::vector<double> black_decision_accuracies;
-    std::vector<double> white_all_accuracies;
-    std::vector<double> black_all_accuracies;
+    std::vector<MoveEvalRecord> white_records;
+    std::vector<MoveEvalRecord> black_records;
     std::vector<int> white_cpls;
     std::vector<int> black_cpls;
 
@@ -365,18 +417,58 @@ GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback pr
             move_accuracy = std::clamp(raw, 0.0, 100.0);
         }
 
-        if (white_to_move) {
-            white_all_accuracies.push_back(move_accuracy);
-            if (!is_book && !is_forced) {
-                white_decision_accuracies.push_back(move_accuracy);
+        // Determine phase of the game
+        int move_number = static_cast<int>(i / 2) + 1;
+        int non_pawn_mat = 0;
+        int queens = 0;
+        for (int sq = 0; sq < 64; ++sq) {
+            chess::Piece p = board_before.at(chess::Square(sq));
+            if (p != chess::Piece::NONE) {
+                if (p.type() == chess::PieceType::QUEEN) queens++;
+                if (p.type() != chess::PieceType::PAWN && p.type() != chess::PieceType::KING) {
+                    non_pawn_mat += piece_val(p.type());
+                }
             }
+        }
+
+        int current_phase = 1; // Middlegame
+        if (move_number <= 10 && still_in_book) {
+            current_phase = 0; // Opening
+        } else if (move_number <= 12 && non_pawn_mat >= 38) {
+            current_phase = 0; // Opening
+        } else if (non_pawn_mat <= 20 || (queens == 0 && non_pawn_mat <= 26)) {
+            current_phase = 2; // Endgame
+        } else {
+            current_phase = 1; // Middlegame
+        }
+
+        double move_weight = 1.0;
+        if (is_book || is_forced) {
+            move_weight = 0.15;
+        } else {
+            bool is_decided = (player_win_before >= 0.94 && material_lead >= 6) ||
+                              (player_win_before <= 0.06 && material_lead <= -6);
+            if (is_decided && classification != MoveClassification::Blunder && 
+                classification != MoveClassification::Miss) {
+                move_weight = 0.25;
+            } else if (classification == MoveClassification::Blunder) {
+                move_weight = 1.30;
+            } else if (classification == MoveClassification::Miss) {
+                move_weight = 1.20;
+            } else if (classification == MoveClassification::Mistake) {
+                move_weight = 1.10;
+            } else {
+                move_weight = 1.00;
+            }
+        }
+
+        MoveEvalRecord record{move_accuracy, move_weight, current_phase};
+        if (white_to_move) {
+            white_records.push_back(record);
             white_cpls.push_back(cpl);
             update_stats(review.white_stats, classification);
         } else {
-            black_all_accuracies.push_back(move_accuracy);
-            if (!is_book && !is_forced) {
-                black_decision_accuracies.push_back(move_accuracy);
-            }
+            black_records.push_back(record);
             black_cpls.push_back(cpl);
             update_stats(review.black_stats, classification);
         }
@@ -408,8 +500,8 @@ GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback pr
             prog.total_plies = game.plies.size();
             prog.move_san = ply.san;
             prog.last_classification = classification;
-            prog.current_accuracy_white = compute_game_accuracy(white_decision_accuracies, white_all_accuracies);
-            prog.current_accuracy_black = compute_game_accuracy(black_decision_accuracies, black_all_accuracies);
+            prog.current_accuracy_white = compute_phase_accuracy(white_records, -1);
+            prog.current_accuracy_black = compute_phase_accuracy(black_records, -1);
 
             progress_cb(prog);
         }
@@ -422,9 +514,16 @@ GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback pr
         return static_cast<double>(std::accumulate(v.begin(), v.end(), 0)) / v.size();
     };
 
-    review.white_stats.accuracy = compute_game_accuracy(white_decision_accuracies, white_all_accuracies);
+    review.white_stats.accuracy = compute_phase_accuracy(white_records, -1);
+    review.white_stats.opening_accuracy = compute_phase_accuracy(white_records, 0);
+    review.white_stats.middlegame_accuracy = compute_phase_accuracy(white_records, 1);
+    review.white_stats.endgame_accuracy = compute_phase_accuracy(white_records, 2);
     review.white_stats.acpl = avg_int(white_cpls);
-    review.black_stats.accuracy = compute_game_accuracy(black_decision_accuracies, black_all_accuracies);
+
+    review.black_stats.accuracy = compute_phase_accuracy(black_records, -1);
+    review.black_stats.opening_accuracy = compute_phase_accuracy(black_records, 0);
+    review.black_stats.middlegame_accuracy = compute_phase_accuracy(black_records, 1);
+    review.black_stats.endgame_accuracy = compute_phase_accuracy(black_records, 2);
     review.black_stats.acpl = avg_int(black_cpls);
 
     review.opening = OpeningBook::instance().identify_opening(uci_history);
@@ -452,6 +551,26 @@ void GameReviewer::print_review(const GameReview& review, std::ostream& os) {
     os << " ACPL: " << std::setprecision(1) << review.white_stats.acpl
        << std::setw(30) << ""
        << " ACPL: " << review.black_stats.acpl << "\n";
+    os << "--------------------------------------------------------------------------------\n";
+    os << " Phase Accuracy                            White              Black\n";
+    os << "--------------------------------------------------------------------------------\n";
+
+    auto print_phase = [&](const std::string& name, double w, double b) {
+        std::ostringstream w_oss, b_oss;
+        if (w > 0.0) w_oss << std::fixed << std::setprecision(1) << w << "%";
+        else w_oss << "-";
+        if (b > 0.0) b_oss << std::fixed << std::setprecision(1) << b << "%";
+        else b_oss << "-";
+
+        os << " " << std::left << std::setw(42) << name
+           << std::setw(19) << w_oss.str()
+           << b_oss.str() << "\n";
+    };
+    print_phase("Opening", review.white_stats.opening_accuracy, review.black_stats.opening_accuracy);
+    print_phase("Middlegame", review.white_stats.middlegame_accuracy, review.black_stats.middlegame_accuracy);
+    if (review.white_stats.endgame_accuracy > 0.0 || review.black_stats.endgame_accuracy > 0.0) {
+        print_phase("Endgame", review.white_stats.endgame_accuracy, review.black_stats.endgame_accuracy);
+    }
     os << "--------------------------------------------------------------------------------\n";
     os << " Move Classification                       White              Black\n";
     os << "--------------------------------------------------------------------------------\n";

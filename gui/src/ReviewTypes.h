@@ -62,6 +62,14 @@ struct ReviewData {
     QVector<AnalyzedData> plies;          // one per ply
     double whiteAccuracy = 0.0;           // 0..100
     double blackAccuracy = 0.0;
+    double whiteOpeningAccuracy = 0.0;
+    double blackOpeningAccuracy = 0.0;
+    double whiteMiddlegameAccuracy = 0.0;
+    double blackMiddlegameAccuracy = 0.0;
+    double whiteEndgameAccuracy = 0.0;
+    double blackEndgameAccuracy = 0.0;
+    int whiteRating = 0;                  // estimated performance rating
+    int blackRating = 0;
     int counts[2][ClassCount] = {};       // [0] = White, [1] = Black
 };
 

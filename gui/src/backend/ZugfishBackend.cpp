@@ -174,6 +174,17 @@ bool ZugfishBackend::review(const GameData &game, int depth, const QString &engi
     // prefer the accuracy the core itself reported; otherwise derive it
     out.whiteAccuracy = lastWhiteAcc >= 0 ? lastWhiteAcc : (nW ? sumW / nW : 0.0);
     out.blackAccuracy = lastBlackAcc >= 0 ? lastBlackAcc : (nB ? sumB / nB : 0.0);
+    // Pass calibrated accuracies and phase breakdown from zugfish core
+    out.whiteAccuracy = rev.white_stats.accuracy;
+    out.blackAccuracy = rev.black_stats.accuracy;
+    out.whiteOpeningAccuracy = rev.white_stats.opening_accuracy;
+    out.blackOpeningAccuracy = rev.black_stats.opening_accuracy;
+    out.whiteMiddlegameAccuracy = rev.white_stats.middlegame_accuracy;
+    out.blackMiddlegameAccuracy = rev.black_stats.middlegame_accuracy;
+    out.whiteEndgameAccuracy = rev.white_stats.endgame_accuracy;
+    out.blackEndgameAccuracy = rev.black_stats.endgame_accuracy;
+    out.whiteRating = rev.white_stats.estimated_rating;
+    out.blackRating = rev.black_stats.estimated_rating;
     return true;
 }
 
