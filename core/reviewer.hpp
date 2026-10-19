@@ -43,6 +43,9 @@ struct AnalyzedPly {
 
 struct PlayerStats {
     double accuracy = 0.0; // 0.0% to 100.0%
+    double opening_accuracy = 0.0;
+    double middlegame_accuracy = 0.0;
+    double endgame_accuracy = 0.0;
     double acpl = 0.0;     // Average Centipawn Loss
     int estimated_rating = 0; // Performance / Game rating (Chess.com style)
     int brilliant_count = 0;
