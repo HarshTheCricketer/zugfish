@@ -1,6 +1,12 @@
 #include "opening_book.hpp"
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 
 namespace zugfish {
+
+namespace fs = std::filesystem;
 
 OpeningBook& OpeningBook::instance() {
     static OpeningBook book;
@@ -14,6 +20,7 @@ OpeningBook::OpeningBook()
 }
 
 void OpeningBook::add_line(const std::string& eco, const std::string& name, const std::vector<std::string>& uci_moves) {
+    if (uci_moves.empty()) return;
     Node* current = root_.get();
     for (const auto& uci : uci_moves) {
         auto it = current->children.find(uci);
@@ -30,9 +37,18 @@ void OpeningBook::add_line(const std::string& eco, const std::string& name, cons
             current->opening = {eco, name};
         }
     }
+    eco_count_++;
 }
 
-bool OpeningBook::is_book_move(const std::vector<std::string>& uci_history, const std::string& next_uci) const {
+bool OpeningBook::is_book_move(const chess::Board& board, const std::vector<std::string>& uci_history, const std::string& next_uci) const {
+    // 1. Check grandmaster tournament Polyglot book
+    if (polyglot_.is_loaded()) {
+        if (polyglot_.is_book_move(board, next_uci)) {
+            return true;
+        }
+    }
+
+    // 2. Check exhaustive ECO trie
     const Node* current = root_.get();
     for (const auto& uci : uci_history) {
         auto it = current->children.find(uci);
@@ -44,6 +60,20 @@ bool OpeningBook::is_book_move(const std::vector<std::string>& uci_history, cons
     return current->children.find(next_uci) != current->children.end();
 }
 
+bool OpeningBook::is_book_move(const std::vector<std::string>& uci_history, const std::string& next_uci) const {
+    // Reconstruct board if board was not passed
+    chess::Board board;
+    for (const auto& u : uci_history) {
+        try {
+            chess::Move m = chess::uci::uciToMove(board, u);
+            board.makeMove(m);
+        } catch (...) {
+            break;
+        }
+    }
+    return is_book_move(board, uci_history, next_uci);
+}
+
 OpeningInfo OpeningBook::identify_opening(const std::vector<std::string>& uci_history) const {
     const Node* current = root_.get();
     OpeningInfo best_match = {"A00", "Custom Opening"};
@@ -53,11 +83,30 @@ OpeningInfo OpeningBook::identify_opening(const std::vector<std::string>& uci_hi
             break;
         }
         current = it->second.get();
-        if (!current->opening.eco.empty()) {
+        if (!current->opening.eco.empty() && current->opening.eco != "A00") {
+            best_match = current->opening;
+        } else if (best_match.eco == "A00" && !current->opening.name.empty()) {
             best_match = current->opening;
         }
     }
     return best_match;
+}
+
+static std::string find_file(const std::string& filename) {
+    const std::vector<std::string> candidates = {
+        "data/" + filename,
+        "../data/" + filename,
+        "../../data/" + filename,
+        "/home/karmveer/.coding/zugfish/data/" + filename,
+        "/usr/local/share/zugfish/" + filename,
+        "/usr/share/zugfish/" + filename
+    };
+    for (const auto& path : candidates) {
+        if (fs::exists(path)) {
+            return path;
+        }
+    }
+    return "";
 }
 
 void OpeningBook::load_openings() {

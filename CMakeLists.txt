@@ -60,6 +60,7 @@ add_library(zugfish_core STATIC
     core/pgn_parser.cpp
     core/reviewer.cpp
     core/opening_book.cpp
+    core/polyglot.cpp
     core/online_importer.cpp
 )
 target_include_directories(zugfish_core PUBLIC core third_party)
@@ -68,6 +69,10 @@ if(WIN32)
     target_link_libraries(zugfish_core PUBLIC ws2_32 crypt32)
 endif()
 target_compile_options(zugfish_core PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra>)
+
+# Ensure data files (polyglot book & openings database) are copied to build dir
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/data)
+file(COPY ${CMAKE_SOURCE_DIR}/data/ DESTINATION ${CMAKE_BINARY_DIR}/data)
 
 # CLI Executable
 if(BUILD_CLI)
