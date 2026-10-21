@@ -155,10 +155,35 @@ Item {
         }
     }
 
+    // During mistake recovery the board becomes playable; otherwise it stays view-only.
+    Rectangle {
+        visible: App.practiceActive && App.selectedSquare >= 0
+        x: visible ? root.col(App.selectedSquare) * root.sq : 0
+        y: visible ? root.row(App.selectedSquare) * root.sq : 0
+        width: root.sq; height: root.sq
+        color: Theme.accent
+        opacity: 0.34
+        z: 3
+    }
+    MouseArea {
+        anchors.fill: parent
+        z: 3
+        enabled: App.practiceActive
+        acceptedButtons: Qt.LeftButton
+        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onClicked: (mouse) => {
+            var file = Math.max(0, Math.min(7, Math.floor(mouse.x / root.sq)))
+            var displayRow = Math.max(0, Math.min(7, Math.floor(mouse.y / root.sq)))
+            var rank = root.flipped ? displayRow : 7 - displayRow
+            var actualFile = root.flipped ? 7 - file : file
+            App.practiceClickSquare(rank * 8 + actualFile)
+        }
+    }
+
     // ---- arrows --------------------------------------------------------
     Shape {
         anchors.fill: parent
-        visible: App.showArrows
+        visible: App.showArrows && !App.practiceActive
         z: 4
         ShapePath {   // engine's preferred move
             strokeWidth: -1

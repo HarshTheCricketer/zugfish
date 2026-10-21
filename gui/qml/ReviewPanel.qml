@@ -23,7 +23,7 @@ Item {
             id: col
             x: 0; y: 0
             width: flick.width - 6
-            spacing: 14
+            spacing: 16
 
             // ---------- not reviewed yet / running / failed ----------
             Card {
@@ -87,6 +87,41 @@ Item {
                             variant: "ghost"; compact: true; icon: "x"; text: "Cancel"
                             onClicked: App.cancelReview()
                         }
+                    }
+                }
+            }
+
+            // ---------- evaluation timeline ----------
+            Card {
+                Layout.fillWidth: true
+                visible: root.done
+                implicitHeight: graphColumn.implicitHeight + 22
+                ColumnLayout {
+                    id: graphColumn
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 6
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            text: "GAME MOMENTUM"
+                            color: Theme.text3
+                            font.family: Theme.sans
+                            font.weight: Font.DemiBold
+                            font.pixelSize: Theme.fsXs
+                            font.letterSpacing: 1.1
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: "Select a point to jump to a move"
+                            color: Theme.text3
+                            font.family: Theme.sans
+                            font.pixelSize: Theme.fsXs
+                        }
+                    }
+                    EvalGraph {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 76
                     }
                 }
             }
@@ -183,7 +218,7 @@ Item {
                 }
             }
 
-            // ---------- interactive learning line ----------
+            // ---------- mistake recovery training ----------
             Card {
                 Layout.fillWidth: true
                 visible: App.learningMode
@@ -195,34 +230,82 @@ Item {
                     id: learningControls
                     anchors.fill: parent
                     anchors.margins: 14
-                    spacing: 9
+                    spacing: 10
                     RowLayout {
                         Layout.fillWidth: true
                         Text {
-                            text: "MISTAKE EXPLORER"
-                            color: Theme.text3; font.family: Theme.sans; font.weight: Font.DemiBold
-                            font.pixelSize: Theme.fsXs; font.letterSpacing: 1.1
+                            text: App.practiceComplete ? "TRAINING COMPLETE" : "MISTAKE RECOVERY"
+                            color: Theme.text3
+                            font.family: Theme.sans
+                            font.weight: Font.DemiBold
+                            font.pixelSize: Theme.fsXs
+                            font.letterSpacing: 1.1
+                            Layout.fillWidth: true
                         }
-                        Item { Layout.fillWidth: true }
-                        AppButton { text: "Return to game"; variant: "ghost"; compact: true; icon: "x"
-                            onClicked: App.closeLearning() }
+                        AppButton {
+                            text: "Return to review"
+                            icon: "arrow-left"
+                            variant: "secondary"
+                            compact: true
+                            onClicked: App.closeLearning()
+                        }
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        AppButton {
+                            text: "Best line"
+                            icon: "target"
+                            variant: App.learningLine === 0 ? "primary" : "secondary"
+                            compact: true
+                            onClicked: App.switchLearningLine(0)
+                        }
+                        AppButton {
+                            text: "Punishment"
+                            icon: "shield"
+                            variant: App.learningLine === 1 ? "primary" : "secondary"
+                            compact: true
+                            enabled: App.learningStepCount > 0
+                            onClicked: App.switchLearningLine(1)
+                        }
                     }
                     Text {
-                        text: App.learningStep === 0 ? (App.learningLineName + " · starting position · 10 moves per side") : (App.learningLineName + " · ply " + App.learningStep + " of " + App.learningStepCount + " · 10 moves per side")
+                        Layout.fillWidth: true
+                        text: App.practiceComplete
+                              ? "Great work. You completed the available best-move continuation."
+                              : (App.practiceMoves + " / 10 best moves found · Engine replies automatically")
                         color: Theme.text0; font.family: Theme.sans; font.weight: Font.DemiBold; font.pixelSize: Theme.fsMd
+                        wrapMode: Text.WordWrap
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 6; radius: 3
+                        color: Theme.bg3
+                        Rectangle {
+                            width: parent.width * Math.min(1, App.practiceMoves / 10)
+                            height: parent.height; radius: parent.radius
+                            color: Theme.accent
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: App.practiceFeedback
+                        color: App.practiceComplete ? Theme.positive : Theme.text2
+                        font.family: Theme.sans; font.pixelSize: Theme.fsSm
+                        wrapMode: Text.WordWrap
                     }
                     RowLayout {
                         Layout.fillWidth: true
-                        AppButton { Layout.fillWidth: true; text: "Best continuation"; icon: "check"
-                            variant: App.learningLine === 0 ? "primary" : "secondary"
-                            onClicked: App.switchLearningLine(0) }
-                        AppButton { Layout.fillWidth: true; text: "Opponent punishment"; icon: "target"
-                            variant: App.learningLine === 1 ? "primary" : "secondary"
-                            onClicked: App.switchLearningLine(1) }
+                        visible: App.practiceComplete
+                        AppButton { Layout.fillWidth: true; text: "Retry line"; icon: "refresh"; variant: "secondary"
+                            onClicked: App.retryPractice() }
+                        AppButton { Layout.fillWidth: true; text: "Continue review"; icon: "check"; variant: "primary"
+                            onClicked: App.closeLearning() }
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "Best continuation shows what you should play. Opponent punishment starts with your actual move, then shows the strongest reply and continuation."
+                        visible: App.practiceActive
+                        text: "Click one of your pieces, then its destination. A non-best move is taken back so you can try again."
                         wrapMode: Text.WordWrap; color: Theme.text2; font.family: Theme.sans; font.pixelSize: Theme.fsSm
                     }
                 }
@@ -242,12 +325,12 @@ Item {
                     anchors.margins: 14
                     spacing: 9
                     Text {
-                        text: "LEARN FROM MISTAKES"
+                        text: "MISTAKE PUNISHER & RECOVERY"
                         color: Theme.text3; font.family: Theme.sans; font.weight: Font.DemiBold
                         font.pixelSize: Theme.fsXs; font.letterSpacing: 1.1
                     }
                     Text {
-                        text: "For every drop greater than 10 percentage points, compare the best move with the opponent's strongest punishment."
+                        text: "For every drop greater than 10 percentage points, practise finding the best move. The punishment line below shows how the opponent could exploit the mistake."
                         Layout.fillWidth: true; wrapMode: Text.WordWrap
                         color: Theme.text2; font.family: Theme.sans; font.pixelSize: Theme.fsSm
                     }
@@ -256,30 +339,45 @@ Item {
                         delegate: Rectangle {
                             required property var modelData
                             Layout.fillWidth: true
-                            implicitHeight: 88
-                            radius: 10
+                            implicitHeight: 124
+                            radius: Theme.radius
                             color: Theme.bg2
                             border.width: 1
                             border.color: Theme.line
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 10; anchors.rightMargin: 8
-                                spacing: 8
+                                anchors.leftMargin: 14; anchors.rightMargin: 12
+                                spacing: 10
                                 ClassBadge { cls: modelData.cls; size: 22 }
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     spacing: 2
                                     Text { text: modelData.label; color: Theme.text0; font.family: Theme.mono; font.pixelSize: Theme.fsSm + 1 }
                                     Text { text: modelData.detail; color: Theme.danger; font.family: Theme.sans; font.pixelSize: Theme.fsXs + 1 }
-                                    Text { text: "Best: " + (modelData.bestMove || "—"); color: Theme.bestArrow; font.family: Theme.sans; font.weight: Font.DemiBold; font.pixelSize: Theme.fsXs + 1 }
+                                    Text { text: "Punisher: " + ((modelData.punishmentLine || []).join(" · ") || "Unavailable"); color: Theme.text2; font.family: Theme.sans; font.pixelSize: Theme.fsXs; wrapMode: Text.WordWrap; Layout.fillWidth: true; maximumLineCount: 2; elide: Text.ElideRight }
                                 }
-                                ColumnLayout {
-                                    spacing: 5
-                                    AppButton { text: "Best line"; icon: "check"; variant: "primary"; compact: true
-                                        onClicked: App.openLearning(modelData.ply, 0) }
-                                    AppButton { text: "Punishment"; icon: "target"; variant: "secondary"; compact: true
-                                        onClicked: App.openLearning(modelData.ply, 1) }
-                                }
+                                
+ColumnLayout {
+    spacing: 5
+
+    AppButton {
+        text: "Train"
+        icon: "target"
+        variant: "primary"
+        compact: true
+        onClicked: App.openLearning(modelData.ply, 0)
+    }
+
+    AppButton {
+        text: "Punisher"
+        icon: "shield-check"
+        variant: "secondary"
+        compact: true
+        enabled: (modelData.punishmentLine || []).length > 0
+        onClicked: App.openLearning(modelData.ply, 1)
+    }
+}
+
                             }
                         }
                     }

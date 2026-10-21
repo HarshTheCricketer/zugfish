@@ -24,8 +24,8 @@ Item {
             Text {
                 text: "Review your games\nlike a coach would."
                 color: Theme.text0
-                font.family: Theme.sans; font.weight: Font.Bold; font.pixelSize: Theme.fs3xl
-                font.letterSpacing: -0.8
+                font.family: Theme.sans; font.weight: Font.Bold; font.pixelSize: Theme.fs3xl + 4
+                font.letterSpacing: -1.1
                 lineHeight: 1.1
             }
             Text {
@@ -39,8 +39,8 @@ Item {
             }
 
             RowLayout {
-                Layout.topMargin: 28
-                spacing: 10
+                Layout.topMargin: 32
+                spacing: 12
                 AppButton { variant: "primary"; icon: "download"; text: "Import games"; onClicked: root.openImport(0) }
                 AppButton { icon: "clipboard-paste"; text: "Paste PGN"; onClicked: root.openImport(2) }
                 AppButton { icon: "folder-open"; text: "Open file"; onClicked: root.openFile() }
@@ -67,11 +67,11 @@ Item {
                     delegate: Rectangle {
                         required property var modelData
                         width: Math.min(240, (hero.width - 24) / 3)
-                        height: 112
-                        radius: Theme.radiusLg - 2
-                        color: tap.pressed ? Theme.bg3 : hover.hovered ? Theme.bg3 : Theme.bg2
+                        height: 124
+                        radius: Theme.radiusLg
+                        color: tap.pressed ? Theme.bg4 : hover.hovered ? Theme.bg3 : Theme.bg2
                         border.width: 1
-                        border.color: hover.hovered ? Theme.lineStrong : Theme.line
+                        border.color: hover.hovered ? Theme.accent : Theme.line
                         Behavior on color { ColorAnimation { duration: 100 } }
                         ColumnLayout {
                             anchors.fill: parent

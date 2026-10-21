@@ -5,10 +5,17 @@ import QtQuick.Layouts
 
 ApplicationWindow {
     id: win
-    width: 1360
-    height: 860
-    minimumWidth: 1040
-    minimumHeight: 680
+    width: 1600
+    height: 960
+    minimumWidth: 1120
+    minimumHeight: 720
+    visibility: Window.Windowed
+    property bool fullscreenMode: false
+
+    function toggleFullscreen() {
+        fullscreenMode = !fullscreenMode
+        visibility = fullscreenMode ? Window.FullScreen : Window.Windowed
+    }
     visible: true
     color: Theme.bg0
     title: App.gameLoaded ? (App.gameInfo.white + " vs " + App.gameInfo.black + "  ·  zugfish") : "zugfish"
@@ -53,21 +60,25 @@ ApplicationWindow {
                 visible: App.gameLoaded
 
                 // sizes (the board is the unit everything else is fitted around)
-                readonly property real pad: 14
-                readonly property real gap: 8
-                readonly property real stripH: 38
-                readonly property real graphH: 52
-                readonly property real controlsH: 38
-                readonly property real evalW: 18
-                readonly property real panelMin: 350
+                readonly property real pad: 20
+                readonly property real gap: 10
+                readonly property real stripH: 42
+                readonly property real graphH: 0
+                readonly property real controlsH: 42
+                readonly property real evalW: 20
+                readonly property real panelMin: 390
                 readonly property real colGap: 16
-                readonly property real fitH: height - 2 * pad - 2 * stripH - graphH - controlsH - 4 * gap - 12
-                readonly property real fitW: width - 2 * pad - panelMin - evalW - gap - colGap
+                readonly property real fitH: height - 2 * pad - 2 * stripH - controlsH - 3 * gap - 12
+                // Reserve roughly 60% of the workspace for the board and 40% for analysis.
+                // The square board still respects available vertical space on smaller windows.
+                readonly property real usableW: width - 2 * pad - colGap
+                readonly property real boardShareW: usableW * 0.60
+                readonly property real panelW: Math.max(340, width - (leftX + boardColW + colGap) - pad)
+                readonly property real fitW: boardShareW - evalW - gap
                 readonly property real boardSize: Math.floor(Math.max(280, Math.min(fitH, fitW)) / 8) * 8
                 readonly property real boardColW: evalW + gap + boardSize
-                readonly property real panelW: Math.min(460, Math.max(panelMin, width - 2 * pad - boardColW - colGap))
-                readonly property real leftX: Math.max(pad, (width - boardColW - colGap - panelW) / 2)
-                readonly property real colH: 2 * stripH + boardSize + graphH + controlsH + 4 * gap + 12
+                readonly property real leftX: pad
+                readonly property real colH: 2 * stripH + boardSize + controlsH + 3 * gap + 12
                 readonly property real topY: Math.max(pad, (height - colH) / 2)
 
                 // top = the side at the top of the board
@@ -135,17 +146,6 @@ ApplicationWindow {
                         }
                     }
 
-                    Item { width: 1; height: 12 - workspace.gap + 2 }   // breathing room before the graph
-
-                    Item {
-                        width: workspace.boardColW; height: workspace.graphH
-                        EvalGraph {
-                            x: workspace.evalW + workspace.gap
-                            width: workspace.boardSize
-                            height: workspace.graphH
-                        }
-                    }
-
                     Item {
                         width: workspace.boardColW; height: workspace.controlsH
                         BoardControls {
@@ -159,9 +159,9 @@ ApplicationWindow {
                 // ---------------- right-hand panel ----------------
                 Rectangle {
                     x: workspace.leftX + workspace.boardColW + workspace.colGap
-                    y: workspace.topY
+                    y: workspace.pad
                     width: workspace.panelW
-                    height: workspace.colH
+                    height: workspace.height - 2 * workspace.pad
                     radius: Theme.radiusLg
                     color: Theme.bg1
                     border.width: 1
@@ -169,15 +169,15 @@ ApplicationWindow {
 
                     SegmentedTabs {
                         id: tabs
-                        x: 14; y: 14
-                        width: parent.width - 28
+                        x: 16; y: 16
+                        width: parent.width - 32
                         model: ["Review", "Moves", "Details"]
                         currentIndex: win.tabIndex
                         onActivated: (i) => win.tabIndex = i
                     }
                     Item {
-                        x: 14; y: 14 + tabs.height + 12
-                        width: parent.width - 28
+                        x: 16; y: 16 + tabs.height + 14
+                        width: parent.width - 32
                         height: parent.height - y - 8
                         clip: true
 
@@ -202,6 +202,39 @@ ApplicationWindow {
         title: "Open a PGN file"
         nameFilters: ["PGN files (*.pgn *.txt)", "All files (*)"]
         onAccepted: App.loadPgnFile(selectedFile)
+    }
+
+    // Floating fullscreen toggle remains available even when the native title bar is hidden.
+    Rectangle {
+        id: fullscreenButton
+        z: 150
+        visible: App.gameLoaded
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: win.fullscreenMode ? 18 : 18
+        anchors.bottomMargin: win.fullscreenMode ? 18 : 18
+        width: 42
+        height: 42
+        radius: 12
+        color: fullscreenMouse.containsMouse ? Theme.bg3 : Theme.bg2
+        border.width: 1
+        border.color: Theme.line
+        Icon {
+            anchors.centerIn: parent
+            name: win.fullscreenMode ? "minimize" : "maximize"
+            color: Theme.text0
+            size: 18
+        }
+        MouseArea {
+            id: fullscreenMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: win.toggleFullscreen()
+        }
+        ToolTip.visible: fullscreenMouse.containsMouse
+        ToolTip.text: win.fullscreenMode ? "Exit full screen (F11 / Ctrl+F)" : "Full screen (F11 / Ctrl+F)"
+        ToolTip.delay: 500
     }
 
     Toast {
@@ -260,4 +293,6 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+I"; onActivated: importDialog.openAt(0) }
     Shortcut { sequence: "Ctrl+V"; enabled: win.keysOn; onActivated: importDialog.openAt(2) }
     Shortcut { sequence: "Ctrl+,"; onActivated: settingsDialog.open() }
+    Shortcut { sequence: "F11"; onActivated: win.toggleFullscreen() }
+    Shortcut { sequence: "Ctrl+F"; onActivated: win.toggleFullscreen() }
 }

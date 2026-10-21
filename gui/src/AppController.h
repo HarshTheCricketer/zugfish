@@ -54,6 +54,11 @@ class AppController : public QObject {
     Q_PROPERTY(QVariantList keyMoments READ keyMoments NOTIFY reviewChanged)
     Q_PROPERTY(QVariantList learningMoments READ learningMoments NOTIFY reviewChanged)
     Q_PROPERTY(bool learningMode READ learningMode NOTIFY currentChanged)
+    Q_PROPERTY(bool practiceActive READ practiceActive NOTIFY currentChanged)
+    Q_PROPERTY(bool practiceComplete READ practiceComplete NOTIFY currentChanged)
+    Q_PROPERTY(QString practiceFeedback READ practiceFeedback NOTIFY currentChanged)
+    Q_PROPERTY(int practiceMoves READ practiceMoves NOTIFY currentChanged)
+    Q_PROPERTY(int selectedSquare READ selectedSquare NOTIFY currentChanged)
     Q_PROPERTY(int learningLine READ learningLine NOTIFY currentChanged) // 0 = best, 1 = played
     Q_PROPERTY(int learningStep READ learningStep NOTIFY currentChanged)
     Q_PROPERTY(int learningStepCount READ learningStepCount NOTIFY currentChanged)
@@ -117,6 +122,11 @@ public:
     QVariantList keyMoments() const { return keyMoments_; }
     QVariantList learningMoments() const { return learningMoments_; }
     bool learningMode() const { return learningMode_; }
+    bool practiceActive() const { return learningMode_ && learningLine_ == 0 && practiceEnabled_ && !practiceComplete_; }
+    bool practiceComplete() const { return practiceComplete_; }
+    QString practiceFeedback() const { return practiceFeedback_; }
+    int practiceMoves() const { return qMin(10, (learningStep_ + 1) / 2); }
+    int selectedSquare() const { return selectedSquare_; }
     int learningLine() const { return learningLine_; }
     int learningStep() const { return learningStep_; }
     int learningStepCount() const;
@@ -162,6 +172,8 @@ public:
     Q_INVOKABLE void openLearning(int mistakePly, int line = 0);
     Q_INVOKABLE void switchLearningLine(int line);
     Q_INVOKABLE void closeLearning();
+    Q_INVOKABLE void practiceClickSquare(int square);
+    Q_INVOKABLE void retryPractice();
     Q_INVOKABLE void jumpKey(int direction);                        // next/previous notable move
     Q_INVOKABLE void jumpToClass(int cls, int direction = 1);
     Q_INVOKABLE void toggleFlip() { setFlipped(!flipped_); }
@@ -220,6 +232,10 @@ private:
     QVariantMap summary_;
     QVariantList winSeries_, classSeries_, keyMoments_, learningMoments_;
     bool learningMode_ = false;
+    bool practiceEnabled_ = false;
+    bool practiceComplete_ = false;
+    QString practiceFeedback_;
+    int selectedSquare_ = -1;
     int learningMistakePly_ = 0; // 1-based ply in the original game
     int learningLine_ = 0;        // 0 = engine's best line, 1 = played-move line
     int learningStep_ = 0;        // 0 = position before the mistake; 1..N = variation plies played

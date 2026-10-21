@@ -4,25 +4,25 @@ import QtQuick
 // Design tokens. Every colour, size and radius in the UI comes from here.
 QtObject {
     // ---- surfaces (dark, blue-tinted neutrals) ----
-    readonly property color bg0: "#090C11"        // window
-    readonly property color bg1: "#0F131A"        // bars, panels
-    readonly property color bg2: "#151A23"        // cards
-    readonly property color bg3: "#1C2330"        // raised / hover
-    readonly property color bg4: "#262F40"        // pressed / tracks
-    readonly property color line: "#232B38"
-    readonly property color lineStrong: "#334055"
+    readonly property color bg0: "#080B12"        // window
+    readonly property color bg1: "#101620"        // bars, panels
+    readonly property color bg2: "#151D2A"        // cards
+    readonly property color bg3: "#202B3B"        // raised / hover
+    readonly property color bg4: "#2B394D"        // pressed / tracks
+    readonly property color line: "#263347"
+    readonly property color lineStrong: "#40516B"
 
     // ---- text ----
-    readonly property color text0: "#EEF1F6"
-    readonly property color text1: "#B4BCCB"
-    readonly property color text2: "#7B8599"
-    readonly property color text3: "#525B6E"
+    readonly property color text0: "#F3F6FC"
+    readonly property color text1: "#C0CADB"
+    readonly property color text2: "#93A1B7"
+    readonly property color text3: "#687890"
 
     // ---- brand ----
-    readonly property color accent: "#8B7CFF"
-    readonly property color accentHi: "#A79CFF"
+    readonly property color accent: "#9B8AFF"
+    readonly property color accentHi: "#B8AEFF"
     readonly property color accentInk: "#0C0A1F"
-    readonly property color positive: "#4ADE80"
+    readonly property color positive: "#55DFA0"
     readonly property color warning: "#F2C94C"
     readonly property color danger: "#F87171"
 
@@ -44,9 +44,9 @@ QtObject {
     readonly property int s4: 16
     readonly property int s5: 20
     readonly property int s6: 24
-    readonly property int radiusSm: 6
-    readonly property int radius: 10
-    readonly property int radiusLg: 14
+    readonly property int radiusSm: 8
+    readonly property int radius: 12
+    readonly property int radiusLg: 18
 
     // ---- move classes: index = zq::MoveClass ----
     readonly property var classColors: [

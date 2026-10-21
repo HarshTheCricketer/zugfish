@@ -14,10 +14,14 @@ Item {
     implicitWidth: 36
     implicitHeight: 36
     opacity: enabled ? 1 : 0.35
+    scale: tap.pressed ? 0.94 : hover.hovered ? 1.06 : 1
+    Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
 
     Rectangle {
         anchors.fill: parent
         radius: Theme.radius - 2
+        border.width: hover.hovered || root.active ? 1 : 0
+        border.color: root.primary ? Theme.accentHi : Theme.lineStrong
         color: root.primary ? (tap.pressed ? Theme.accent : hover.hovered ? Theme.accentHi : Theme.accent)
                             : tap.pressed ? Theme.bg4 : (hover.hovered || root.active) ? Theme.bg3 : "transparent"
         Behavior on color { ColorAnimation { duration: 90 } }

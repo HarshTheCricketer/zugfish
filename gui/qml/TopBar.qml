@@ -14,9 +14,9 @@ Rectangle {
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 20
-        anchors.rightMargin: 16
-        spacing: 12
+        anchors.leftMargin: 24
+        anchors.rightMargin: 22
+        spacing: 14
 
         // wordmark
         Item {
@@ -31,7 +31,7 @@ Rectangle {
                     Rectangle { anchors.fill: parent; radius: 9; color: Theme.accent }
                     Shape {   // a small fish
                         anchors.centerIn: parent
-                        width: 24; height: 24
+                        width: 27; height: 27
                         ShapePath {
                             strokeWidth: -1
                             fillColor: Theme.accentInk
@@ -48,7 +48,7 @@ Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "zugfish"
                     color: Theme.text0
-                    font.family: Theme.sans; font.weight: Font.Bold; font.pixelSize: Theme.fsXl
+                    font.family: Theme.sans; font.weight: Font.Bold; font.pixelSize: Theme.fsXl + 1
                     font.letterSpacing: -0.3
                 }
             }

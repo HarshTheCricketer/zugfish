@@ -11,22 +11,24 @@ Item {
     property bool busy: false
     signal clicked()
 
-    implicitHeight: compact ? 30 : 36
+    implicitHeight: compact ? 32 : 40
     implicitWidth: row.implicitWidth + (compact ? 20 : 28)
     opacity: enabled ? 1 : 0.4
+    scale: tap.pressed ? 0.98 : hover.hovered ? 1.015 : 1
+    Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
 
     readonly property bool isPrimary: variant === "primary"
     readonly property color fg: isPrimary ? Theme.accentInk : hover.hovered ? Theme.text0 : Theme.text1
 
     Rectangle {
         anchors.fill: parent
-        radius: Theme.radius - 2
+        radius: Theme.radiusSm + 2
         color: root.isPrimary ? (tap.pressed ? Theme.accent : hover.hovered ? Theme.accentHi : Theme.accent)
              : root.variant === "ghost" ? (tap.pressed ? Theme.bg4 : hover.hovered ? Theme.bg3 : "transparent")
              : (tap.pressed ? Theme.bg4 : hover.hovered ? Theme.bg3 : Theme.bg2)
-        border.width: root.variant === "secondary" ? 1 : 0
-        border.color: hover.hovered ? Theme.lineStrong : Theme.line
-        Behavior on color { ColorAnimation { duration: 90 } }
+        border.width: root.variant === "secondary" ? 1 : (root.isPrimary ? 1 : 0)
+        border.color: root.isPrimary ? (hover.hovered ? Theme.accentHi : Theme.accent) : (hover.hovered ? Theme.lineStrong : Theme.line)
+        Behavior on color { ColorAnimation { duration: 120 } }
     }
     Row {
         id: row

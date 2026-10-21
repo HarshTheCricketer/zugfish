@@ -265,6 +265,10 @@ QString AppController::loadGame(const GameData &game)
     stopWorker();
     autoplay_.stop();
     learningMode_ = false;
+    practiceEnabled_ = false;
+    practiceComplete_ = false;
+    practiceFeedback_.clear();
+    selectedSquare_ = -1;
     learningMistakePly_ = 0;
     learningStep_ = 0;
     learningLine_ = 0;
@@ -310,6 +314,10 @@ void AppController::closeGame()
     stopWorker();
     autoplay_.stop();
     learningMode_ = false;
+    practiceEnabled_ = false;
+    practiceComplete_ = false;
+    practiceFeedback_.clear();
+    selectedSquare_ = -1;
     learningMistakePly_ = 0;
     learningStep_ = 0;
     learningLine_ = 0;
@@ -450,16 +458,22 @@ void AppController::openLearning(int mistakePly, int line)
     if (!hasReview_ || mistakePly < 1 || mistakePly > review_.plies.size())
         return;
     const zq::AnalyzedData &a = review_.plies[mistakePly - 1];
-    if (a.bestLine.isEmpty() || a.playedLine.isEmpty())
+    if (a.bestLine.isEmpty())
         return;
     if (autoplay_.isActive()) {
         autoplay_.stop();
         emit autoplayChanged();
     }
     learningMistakePly_ = mistakePly;
-    ply_ = mistakePly; // keep the original game's mistake selected in the graph/move list
-    learningLine_ = line == 1 ? 1 : 0;
+    ply_ = mistakePly; // retain the original mistake in the move list and graph
+    learningLine_ = line == 1 && !a.playedLine.isEmpty() ? 1 : 0;
     learningMode_ = true;
+    practiceEnabled_ = (learningLine_ == 0);
+    practiceComplete_ = false;
+    practiceFeedback_ = practiceEnabled_
+        ? QStringLiteral("Find the engine's best move. Only a best-equivalent move advances.")
+        : QStringLiteral("Opponent punishment line — view only.");
+    selectedSquare_ = -1;
     learningStep_ = 0;
     rebuildPosition();
     emit currentChanged();
@@ -474,6 +488,12 @@ void AppController::switchLearningLine(int line)
     if ((requested == 0 && a.bestLine.isEmpty()) || (requested == 1 && a.playedLine.isEmpty()))
         return;
     learningLine_ = requested;
+    practiceEnabled_ = (requested == 0);
+    practiceComplete_ = false;
+    practiceFeedback_ = practiceEnabled_
+        ? QStringLiteral("Find the engine's best move. Only a best-equivalent move advances.")
+        : QStringLiteral("Opponent punishment line — view only.");
+    selectedSquare_ = -1;
     learningStep_ = 0;
     rebuildPosition();
     emit currentChanged();
@@ -484,7 +504,94 @@ void AppController::closeLearning()
     if (!learningMode_)
         return;
     learningMode_ = false;
+    practiceEnabled_ = false;
+    practiceComplete_ = false;
+    practiceFeedback_.clear();
+    selectedSquare_ = -1;
     learningStep_ = 0;
+    rebuildPosition();
+    emit currentChanged();
+}
+
+void AppController::retryPractice()
+{
+    if (!learningMode_ || learningLine_ != 0)
+        return;
+    learningStep_ = 0;
+    practiceComplete_ = false;
+    selectedSquare_ = -1;
+    practiceFeedback_ = QStringLiteral("Try again: find the engine's best move.");
+    rebuildPosition();
+    emit currentChanged();
+}
+
+void AppController::practiceClickSquare(int square)
+{
+    if (!practiceActive() || square < 0 || square >= 64)
+        return;
+
+    const auto &line = activeLearningLine();
+    if (learningStep_ >= line.size()) {
+        practiceComplete_ = true;
+        practiceFeedback_ = QStringLiteral("Training line complete!");
+        selectedSquare_ = -1;
+        emit currentChanged();
+        return;
+    }
+
+    const QString piece = squares_.value(square);
+    if (selectedSquare_ < 0) {
+        if (piece.isEmpty() || (piece[0] == QLatin1Char('w')) != whiteToMove_) {
+            practiceFeedback_ = QStringLiteral("Select one of your pieces.");
+            emit currentChanged();
+            return;
+        }
+        selectedSquare_ = square;
+        practiceFeedback_ = QStringLiteral("Now select the destination square.");
+        emit currentChanged();
+        return;
+    }
+
+    const int from = selectedSquare_;
+    selectedSquare_ = -1;
+    if (from == square) {
+        emit currentChanged();
+        return;
+    }
+
+    auto squareName = [](int sq) {
+        QString out;
+        out += QChar(QLatin1Char('a').unicode() + (sq % 8));
+        out += QChar(QLatin1Char('1').unicode() + (sq / 8));
+        return out;
+    };
+    QString attempted = squareName(from) + squareName(square);
+    const QString movingPiece = squares_.value(from);
+    if ((movingPiece == QStringLiteral("wP") && square / 8 == 7)
+        || (movingPiece == QStringLiteral("bP") && square / 8 == 0))
+        attempted += QLatin1Char('q');
+
+    const QString expected = line[learningStep_].uci.toLower();
+    if (attempted.toLower() != expected) {
+        practiceFeedback_ = QStringLiteral("%1 is not the best move here. Try again.")
+                                .arg(attempted);
+        emit currentChanged();
+        return;
+    }
+
+    // Accept the user's best move, then play the pre-analysed engine reply.
+    // Practice is isolated from the original PGN and its move list.
+    ++learningStep_;
+    if (learningStep_ < line.size())
+        ++learningStep_;
+
+    if (learningStep_ >= line.size()) {
+        practiceComplete_ = true;
+        practiceFeedback_ = QStringLiteral("Excellent! You completed the best-move training line.");
+    } else {
+        practiceFeedback_ = QStringLiteral("Best move! Stockfish played its strongest reply. %1/10 of your moves.")
+                                .arg(learningStep_ / 2);
+    }
     rebuildPosition();
     emit currentChanged();
 }
@@ -547,14 +654,20 @@ void AppController::rebuildPosition()
             const QString &uci = line[learningStep_ - 1].uci;
             lastFrom_ = squareFromUci(uci, 0);
             lastTo_ = squareFromUci(uci, 2);
+        }
+        if (practiceEnabled_ && !practiceComplete_ && learningStep_ < line.size()) {
+            const QString expected = line[learningStep_].uci;
+            bestFrom_ = squareFromUci(expected, 0);
+            bestTo_ = squareFromUci(expected, 2);
+        } else if (!practiceEnabled_ && learningStep_ == 0 && !mistake.bestBeforeUci.isEmpty()) {
+            bestFrom_ = squareFromUci(mistake.bestBeforeUci, 0);
+            bestTo_ = squareFromUci(mistake.bestBeforeUci, 2);
+        } else if (!practiceEnabled_ && learningStep_ > 0 && learningStep_ <= line.size()) {
             const QString best = line[learningStep_ - 1].after.bestUci;
-            if (!best.isEmpty() && best != uci) {
+            if (!best.isEmpty() && best != line[learningStep_ - 1].uci) {
                 bestFrom_ = squareFromUci(best, 0);
                 bestTo_ = squareFromUci(best, 2);
             }
-        } else if (!mistake.bestBeforeUci.isEmpty()) {
-            bestFrom_ = squareFromUci(mistake.bestBeforeUci, 0);
-            bestTo_ = squareFromUci(mistake.bestBeforeUci, 2);
         }
     } else if (ply_ > 0 && ply_ <= plyCount()) {
         const QString &uci = game_.plies[ply_ - 1].uci;
@@ -694,6 +807,10 @@ void AppController::startReview()
     stopWorker();
 
     learningMode_ = false;
+    practiceEnabled_ = false;
+    practiceComplete_ = false;
+    practiceFeedback_.clear();
+    selectedSquare_ = -1;
     learningMistakePly_ = 0;
     learningStep_ = 0;
     state_ = Running;
@@ -822,6 +939,11 @@ void AppController::rebuildReviewDerived()
             m["bestMove"] = a.bestBeforeSan;
             m["bestPlies"] = a.bestLine.size();
             m["playedPlies"] = a.playedLine.size();
+            QStringList punishmentMoves;
+            punishmentMoves.reserve(a.playedLine.size());
+            for (const zq::LearningPlyData &linePly : a.playedLine)
+                punishmentMoves << linePly.san;
+            m["punishmentLine"] = punishmentMoves;
             learningMoments_ << m;
         }
 
